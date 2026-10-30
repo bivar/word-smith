@@ -10938,6 +10938,8 @@ function wsParseBibtex(text) {
       continue;
     const f = wsBibFields(body.slice(comma + 1), strings);
     const tx = (x) => wsTexText(x || "");
+    const thesisType = /thesis$/.test(kind) ? tx(f.type) : "";
+    const typeCode = /^(phdthesis|mathesis|mastersthesis|candthesis)$/i.test(thesisType);
     out.set(key, {
       key,
       type: wsBibType(kind, f),
@@ -10957,10 +10959,20 @@ function wsParseBibtex(text) {
       origYear: (tx(f.origyear) || tx(f.origdate)).slice(0, 4),
       translators: wsBibNames(f.translator || ""),
       series: tx(f.series),
-      accessed: tx(f.urldate).slice(0, 10)
+      accessed: tx(f.urldate).slice(0, 10),
+      degree: kind === "phdthesis" ? "phd" : kind === "mastersthesis" ? "masters" : kind === "thesis" ? wsThesisDegree(thesisType) : "",
+      genre: thesisType && !typeCode ? thesisType : ""
     });
   }
   return out;
+}
+function wsThesisDegree(s) {
+  const t = String(s || "").toLowerCase();
+  if (/phd|ph\.\s?d|doct|dout|tese/.test(t))
+    return "phd";
+  if (/master|mathesis|mestr|ma[iî]tr|magist|m\.\s?a\.|m\.\s?sc|msc|disserta[cç][aã]o/.test(t))
+    return "masters";
+  return "";
 }
 var wsRec = (v) => v && typeof v === "object" ? wsBag(v) : {};
 function wsCslNames(v) {
@@ -11003,9 +11015,11 @@ function wsParseCslJson(text) {
   const items = Array.isArray(data) ? data : wsListOf(wsRec(data).items);
   for (const it of items) {
     const r = wsRec(it);
-    const key = wsStr(r.id) || wsStr(r["citation-key"]);
+    const noted = /^\s*Citation Key:\s*(\S+)\s*$/im.exec(wsStr(r.note));
+    const key = wsStr(r["citation-key"]) || (noted ? noted[1] : "") || wsStr(r.id);
     if (!key)
       continue;
+    const genre = r.type === "thesis" ? wsStr(r.genre) : "";
     const issued = wsRec(r.issued);
     const parts = wsListOf(issued["date-parts"]);
     const first = wsListOf(parts[0]);
@@ -11029,7 +11043,9 @@ function wsParseCslJson(text) {
       origYear: wsCslDay(r["original-date"]).slice(0, 4),
       translators: wsCslNames(r.translator),
       series: wsStr(r["collection-title"]),
-      accessed: wsCslDay(r.accessed)
+      accessed: wsCslDay(r.accessed),
+      degree: genre ? wsThesisDegree(genre) : "",
+      genre
     });
   }
   return out;
@@ -11097,15 +11113,43 @@ function wsFindCitations(text) {
   }
   return out.sort((a, b) => a.from - b.from);
 }
-var WS_CITE_TERMS_EN = { and: "and", ed: "ed.", editedBy: "edited by", trans: "trans.", translatedBy: "Translated by", in: "In", nd: "n.d.", accessed: "accessed", firstPublished: "First published", apaOriginal: "Original work published", edition: "{n} ed.", ibid: "Ibid.", availableAt: "Available at:", open: "“", close: "”", inside: true };
+var WS_CITE_TERMS_EN = {
+  and: "and",
+  ed: "ed.",
+  editedBy: "edited by",
+  trans: "trans.",
+  translatedBy: "Translated by",
+  in: "In",
+  nd: "n.d.",
+  accessed: "accessed",
+  firstPublished: "First published",
+  apaOriginal: "Original work published",
+  edition: "{n} ed.",
+  ibid: "Ibid.",
+  availableAt: "Available at:",
+  open: "“",
+  close: "”",
+  inside: true,
+  thesisPhd: "Doctoral dissertation",
+  thesisMasters: "Master’s thesis",
+  thesis: "Thesis",
+  locChapter: "chap.",
+  locSection: "sec.",
+  locVolume: "vol.",
+  locFigure: "fig.",
+  locLine: "line",
+  locParagraph: "para.",
+  locNote: "n.",
+  locFolio: "fol."
+};
 var WS_CITE_TERMS = {
   "en-GB": { open: "‘", close: "’", inside: false },
-  fr: { ibid: "Ibid.", availableAt: "Disponible sur :", and: "et", ed: "éd.", editedBy: "sous la direction de", trans: "trad.", translatedBy: "Traduit par", in: "Dans", nd: "s.d.", accessed: "consulté le", firstPublished: "Première publication en", apaOriginal: "Œuvre originale publiée en", edition: "{n}e éd.", open: "« ", close: " »", inside: false },
-  de: { ibid: "Ebd.", availableAt: "Verfügbar unter:", and: "und", ed: "hg. v.", editedBy: "herausgegeben von", trans: "übers. v.", translatedBy: "Übersetzt von", in: "In", nd: "o. J.", accessed: "abgerufen am", firstPublished: "Erstveröffentlichung", apaOriginal: "Originalwerk veröffentlicht", edition: "{n}. Aufl.", open: "„", close: "“", inside: false },
-  es: { ibid: "Ibid.", availableAt: "Disponible en:", and: "y", ed: "ed.", editedBy: "editado por", trans: "trad.", translatedBy: "Traducido por", in: "En", nd: "s. f.", accessed: "consultado el", firstPublished: "Publicado originalmente en", apaOriginal: "Obra original publicada en", edition: "{n}.ª ed.", open: "«", close: "»", inside: false },
-  it: { ibid: "Ibid.", availableAt: "Disponibile su:", and: "e", ed: "a cura di", editedBy: "a cura di", trans: "trad.", translatedBy: "Traduzione di", in: "In", nd: "s.d.", accessed: "consultato il", firstPublished: "Prima edizione", apaOriginal: "Opera originale pubblicata nel", edition: "{n}ª ed.", open: "«", close: "»", inside: false },
-  pt: { ibid: "Ibid.", availableAt: "Disponível em:", and: "e", ed: "ed.", editedBy: "editado por", trans: "trad.", translatedBy: "Traduzido por", in: "In", nd: "s.d.", accessed: "consultado em", firstPublished: "Publicado originalmente em", apaOriginal: "Obra original publicada em", edition: "{n}.ª ed.", open: "«", close: "»", inside: false },
-  "pt-BR": { ibid: "Ibid.", availableAt: "Disponível em:", and: "e", ed: "ed.", editedBy: "editado por", trans: "trad.", translatedBy: "Traduzido por", in: "In", nd: "s.d.", accessed: "acesso em", firstPublished: "Publicado originalmente em", apaOriginal: "Obra original publicada em", edition: "{n}.ª ed.", open: "“", close: "”", inside: false },
+  fr: { ibid: "Ibid.", availableAt: "Disponible sur :", and: "et", ed: "éd.", editedBy: "sous la direction de", trans: "trad.", translatedBy: "Traduit par", in: "Dans", nd: "s.d.", accessed: "consulté le", firstPublished: "Première publication en", apaOriginal: "Œuvre originale publiée en", edition: "{n}e éd.", open: "« ", close: " »", inside: false, thesisPhd: "Thèse de doctorat", thesisMasters: "Mémoire de master", thesis: "Thèse", locChapter: "chap.", locSection: "sect.", locVolume: "vol.", locFigure: "fig.", locLine: "l.", locParagraph: "§", locNote: "n.", locFolio: "fol." },
+  de: { ibid: "Ebd.", availableAt: "Verfügbar unter:", and: "und", ed: "hg. v.", editedBy: "herausgegeben von", trans: "übers. v.", translatedBy: "Übersetzt von", in: "In", nd: "o. J.", accessed: "abgerufen am", firstPublished: "Erstveröffentlichung", apaOriginal: "Originalwerk veröffentlicht", edition: "{n}. Aufl.", open: "„", close: "“", inside: false, thesisPhd: "Dissertation", thesisMasters: "Masterarbeit", thesis: "Abschlussarbeit", locChapter: "Kap.", locSection: "Abschn.", locVolume: "Bd.", locFigure: "Abb.", locLine: "Z.", locParagraph: "Abs.", locNote: "Anm.", locFolio: "Bl." },
+  es: { ibid: "Ibid.", availableAt: "Disponible en:", and: "y", ed: "ed.", editedBy: "editado por", trans: "trad.", translatedBy: "Traducido por", in: "En", nd: "s. f.", accessed: "consultado el", firstPublished: "Publicado originalmente en", apaOriginal: "Obra original publicada en", edition: "{n}.ª ed.", open: "«", close: "»", inside: false, thesisPhd: "Tesis doctoral", thesisMasters: "Tesis de maestría", thesis: "Tesis", locChapter: "cap.", locSection: "sec.", locVolume: "vol.", locFigure: "fig.", locLine: "l.", locParagraph: "párr.", locNote: "n.", locFolio: "f." },
+  it: { ibid: "Ibid.", availableAt: "Disponibile su:", and: "e", ed: "a cura di", editedBy: "a cura di", trans: "trad.", translatedBy: "Traduzione di", in: "In", nd: "s.d.", accessed: "consultato il", firstPublished: "Prima edizione", apaOriginal: "Opera originale pubblicata nel", edition: "{n}ª ed.", open: "«", close: "»", inside: false, thesisPhd: "Tesi di dottorato", thesisMasters: "Tesi di laurea magistrale", thesis: "Tesi", locChapter: "cap.", locSection: "sez.", locVolume: "vol.", locFigure: "fig.", locLine: "r.", locParagraph: "par.", locNote: "n.", locFolio: "f." },
+  pt: { ibid: "Ibid.", availableAt: "Disponível em:", and: "e", ed: "ed.", editedBy: "editado por", trans: "trad.", translatedBy: "Traduzido por", in: "In", nd: "s.d.", accessed: "consultado em", firstPublished: "Publicado originalmente em", apaOriginal: "Obra original publicada em", edition: "{n}.ª ed.", open: "«", close: "»", inside: false, thesisPhd: "Tese de doutoramento", thesisMasters: "Dissertação de mestrado", thesis: "Tese", locChapter: "cap.", locSection: "sec.", locVolume: "vol.", locFigure: "fig.", locLine: "l.", locParagraph: "par.", locNote: "n.", locFolio: "f." },
+  "pt-BR": { ibid: "Ibid.", availableAt: "Disponível em:", and: "e", ed: "ed.", editedBy: "editado por", trans: "trad.", translatedBy: "Traduzido por", in: "In", nd: "s.d.", accessed: "acesso em", firstPublished: "Publicado originalmente em", apaOriginal: "Obra original publicada em", edition: "{n}.ª ed.", open: "“", close: "”", inside: false, thesisPhd: "Tese (Doutorado)", thesisMasters: "Dissertação (Mestrado)", thesis: "Trabalho acadêmico", locChapter: "cap.", locSection: "seç.", locVolume: "v.", locFigure: "fig.", locLine: "l.", locParagraph: "par.", locNote: "n.", locFolio: "f." },
   ro: { ibid: "Ibidem", availableAt: "Disponibil la:", and: "și", ed: "ed.", editedBy: "editat de", trans: "trad.", translatedBy: "Traducere de", in: "În", nd: "f.a.", accessed: "accesat la", firstPublished: "Prima ediție", apaOriginal: "Lucrare originală publicată în", edition: "ed. a {n}-a", open: "„", close: "”", inside: false },
   nl: { ibid: "Ibid.", availableAt: "Beschikbaar via:", and: "en", ed: "red.", editedBy: "onder redactie van", trans: "vert.", translatedBy: "Vertaald door", in: "In", nd: "z.j.", accessed: "geraadpleegd op", firstPublished: "Oorspronkelijk verschenen in", apaOriginal: "Origineel werk gepubliceerd in", edition: "{n}e dr.", open: "“", close: "”", inside: false },
   pl: { ibid: "Tamże", availableAt: "Dostępny w internecie:", and: "i", ed: "red.", editedBy: "pod redakcją", trans: "tłum.", translatedBy: "Przekład", in: "W", nd: "b.r.", accessed: "dostęp", firstPublished: "Pierwsze wydanie", apaOriginal: "Oryginał opublikowany w", edition: "wyd. {n}", open: "„", close: "”", inside: false },
@@ -11138,6 +11182,15 @@ function wsCiteTermsFor(lang, props) {
   return out;
 }
 var T2 = WS_CITE_TERMS_EN;
+function wsWithTerms(terms, fn) {
+  const was = T2;
+  T2 = terms;
+  try {
+    return fn();
+  } finally {
+    T2 = was;
+  }
+}
 var lc = (s) => s.charAt(0).toLowerCase() + s.slice(1);
 var cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 var origOf = (r) => r.origYear && r.origYear !== r.year ? r.origYear : "";
@@ -11183,19 +11236,46 @@ var apaNames = (a) => {
   return names.length <= 1 ? names[0] || "" : names.slice(0, -1).join(", ") + ", & " + names[names.length - 1];
 };
 var listInverted = (a) => a.length === 2 ? inverted(a[0]) + (T2.and === "and" ? ", and " : " " + T2.and + " ") + full(a[1]) : join(a.map((x, k) => k === 0 ? inverted(x) : full(x)), T2.and);
+var LOC_LABELS = {};
+for (const [kind, words] of [
+  ["page", "p pp page pages pg pag pags pagina paginas s seite seiten"],
+  ["chapter", "ch chap chapter chapters cap caps capitulo capitolo chapitre kap kapitel"],
+  ["section", "sec secs sect section sections secao seccion secc sez sezione abschn abschnitt §"],
+  ["volume", "v vol vols volume volumes bd band"],
+  ["figure", "fig figs figure figures figura abb abbildung"],
+  ["line", "l line lines linha linea lin z zeile"],
+  ["paragraph", "para paras paragraph paragraphs par parag paragrafo parr parrafo abs absatz ¶"],
+  ["note", "n nn note notes nota anm anmerkung"],
+  ["folio", "f fl fol folio bl"]
+])
+  for (const w of words.split(" "))
+    LOC_LABELS[w] = kind;
+var LOC_TERM = { chapter: "locChapter", section: "locSection", volume: "locVolume", figure: "locFigure", line: "locLine", paragraph: "locParagraph", note: "locNote", folio: "locFolio" };
+var LOC_MLA_EN = { chapter: "ch.", paragraph: "par." };
 function wsLocator(loc) {
   const t = String(loc || "").trim();
   if (!t)
     return { label: "", value: "" };
-  const m = /^(pp?|pages?|chap|chapter|ch|sec|section|vol|fig|line|para|n)\.?\s+(.+)$/i.exec(t);
-  if (m)
-    return { label: m[1].toLowerCase(), value: m[2].replace(/\s*-+\s*/g, "–") };
-  return { label: /^\d+\s*[-–]\s*\d+$/.test(t) ? "pp" : "p", value: t.replace(/\s*-+\s*/g, "–") };
+  const dash = (s) => s.replace(/\s*-+\s*/g, "–");
+  const m = /^s\.\s?v\./i.test(t) ? null : /^([\p{L}]+)(?:\.\s*|\s+)(.+)$/u.exec(t) || /^([§¶])\s*(.+)$/u.exec(t);
+  const kind = m ? LOC_LABELS[m[1].normalize("NFD").replace(/\p{M}/gu, "").toLowerCase()] : "";
+  if (m && kind)
+    return { label: kind, value: dash(m[2].trim()) };
+  if (/^\p{L}/u.test(t) && !/^[ivxlcdm]+(?:\s*[-–,]\s*[ivxlcdm\d]+)*$/i.test(t))
+    return { label: "other", value: t };
+  return { label: "page", value: dash(t) };
 }
-var LOC_WORDS = { chap: ["chap.", "ch."], chapter: ["chap.", "ch."], ch: ["chap.", "ch."], sec: ["sec.", "sec."], section: ["sec.", "sec."], vol: ["vol.", "vol."], fig: ["fig.", "fig."], line: ["line", "line"], para: ["para.", "par."], n: ["n.", "n."] };
-var isPage = (l) => /^(p|pp|page|pages)$/.test(l.label);
-var bareLoc = (l, mla = false) => !l.value ? "" : isPage(l) ? l.value : (LOC_WORDS[l.label] || [l.label + ".", l.label + "."])[mla ? 1 : 0] + " " + l.value;
-var pageWord = (l) => !l.value ? "" : l.label === "p" || l.label === "page" ? "p. " + l.value : l.label === "pp" || l.label === "pages" ? "pp. " + l.value : l.label + ". " + l.value;
+var isPage = (l) => l.label === "page";
+var locWord = (label, mla = false) => {
+  const k = LOC_TERM[label];
+  if (!k)
+    return "";
+  if (mla && LOC_MLA_EN[label] && T2[k] === WS_CITE_TERMS_EN[k])
+    return LOC_MLA_EN[label];
+  return String(T2[k]);
+};
+var bareLoc = (l, mla = false) => !l.value ? "" : isPage(l) || l.label === "other" ? l.value : locWord(l.label, mla) + " " + l.value;
+var pageWord = (l) => !l.value ? "" : isPage(l) ? (/[–,&]/.test(l.value) ? "pp. " : "p. ") + l.value : l.label === "other" ? l.value : locWord(l.label) + " " + l.value;
 function etal(r, two, max = 2) {
   const a = (r.authors.length ? r.authors : r.editors).map(fam);
   if (!a.length)
@@ -11238,6 +11318,21 @@ function inTextOf(style, r, it, n, narrative) {
     return String(n) + (loc.value ? ", " + pageWord(loc) : "");
   return "";
 }
+var THESIS_EN = {
+  chicago: ["PhD diss.", "Master’s thesis"],
+  harvard: ["PhD thesis", "MA thesis"],
+  mla: ["PhD dissertation", "MA thesis"],
+  ieee: ["Ph.D. dissertation", "M.S. thesis"]
+};
+function thesisKind(r, style) {
+  if (r.genre)
+    return r.genre;
+  if (r.degree !== "phd" && r.degree !== "masters")
+    return T2.thesis;
+  const k = r.degree === "phd" ? "thesisPhd" : "thesisMasters";
+  const en = THESIS_EN[style.replace(/-.*$/, "")];
+  return en && T2[k] === WS_CITE_TERMS_EN[k] ? en[r.degree === "phd" ? 0 : 1] : T2[k];
+}
 function entryOf(style, r, n) {
   const a = r.authors.length ? r.authors : r.editors;
   const eds = !r.authors.length && r.editors.length;
@@ -11249,6 +11344,8 @@ function entryOf(style, r, n) {
       return head + end(r.title) + " " + ital(r.container) + (r.volume ? ", " + ital(r.volume) + (r.issue ? "(" + r.issue + ")" : "") : "") + (r.pages ? ", " + r.pages : "") + "." + (link ? " " + link : "");
     if (r.type === "chapter")
       return head + end(r.title) + " " + T2.in + " " + (r.editors.length ? join(r.editors.map((x) => (x.given ? initials(x.given) + " " : "") + x.family), "&", false) + " (Ed" + (r.editors.length > 1 ? "s" : "") + ".), " : "") + ital(r.container) + (r.pages ? " (pp. " + r.pages + ")" : "") + ". " + end(r.publisher) + (link ? " " + link : "");
+    if (r.type === "thesis")
+      return head + ital(r.title) + " [" + [thesisKind(r, style), r.publisher].filter(Boolean).join(", ") + "]." + (link ? " " + link : "");
     const trA = (r.translators || []).map((x) => (x.given ? initials(x.given) + " " : "") + x.family);
     const paren = [r.edition ? editionOf(r.edition) : "", trA.length ? join(trA, "&", false) + ", " + cap(T2.trans) : ""].filter(Boolean).join("; ");
     return [head + ital(r.title) + (paren ? " (" + paren + ")" : "") + ".", end(r.publisher), link, origOf(r) ? "(" + T2.apaOriginal + " " + origOf(r) + ")" : ""].filter(Boolean).join(" ");
@@ -11264,6 +11361,8 @@ function entryOf(style, r, n) {
         return head + quoted(end(r.title)) + " " + T2.in + " " + ital(r.container) + (r.editors.length ? ", " + T2.editedBy + " " + join(r.editors.map(full), T2.and) : "") + (r.pages ? ", " + r.pages : "") + ". " + end(pub);
       if (r.type === "web")
         return head + quoted(end(r.title)) + (link ? " " + link + "." : "");
+      if (r.type === "thesis")
+        return head + quoted(end(r.title)) + " " + end([thesisKind(r, style), r.publisher].filter(Boolean).join(", ")) + (link ? " " + link + "." : "");
       return [head + italEnd(r.title), bibAfterTitle(r), end(pub)].filter(Boolean).join(" ");
     }
     if (r.type === "article")
@@ -11272,6 +11371,8 @@ function entryOf(style, r, n) {
       return (who ? who + " " : "") + quoted(end(r.title)) + " " + T2.in + " " + ital(r.container) + (r.editors.length ? ", " + T2.editedBy + " " + join(r.editors.map(full), T2.and) : "") + (r.pages ? ", " + r.pages : "") + ". " + end([pub, r.year].filter(Boolean).join(", "));
     if (r.type === "web")
       return (who ? who + " " : "") + quoted(end(r.title)) + (r.year ? " " + end(r.year) : "") + (r.accessed ? " " + end(cap(T2.accessed) + " " + dayOf(r.accessed)) : "") + (link ? " " + link + "." : "");
+    if (r.type === "thesis")
+      return (who ? who + " " : "") + quoted(end(r.title)) + " " + end([thesisKind(r, style), r.publisher, r.year].filter(Boolean).join(", ")) + (link ? " " + link + "." : "");
     return [(who ? who + " " : "") + italEnd(r.title), bibAfterTitle(r), end([pub, r.year].filter(Boolean).join(", ")), origOf(r) ? end(T2.firstPublished + " " + origOf(r)) : ""].filter(Boolean).join(" ");
   }
   if (style === "harvard")
@@ -11285,6 +11386,8 @@ function entryOf(style, r, n) {
       return head + quoted(end(r.title)) + " " + ital(r.container) + (r.editors.length ? ", " + T2.editedBy + " " + join(r.editors.map(full), T2.and) : "") + ", " + [r.publisher, r.year].filter(Boolean).join(", ") + (r.pages ? ", pp. " + r.pages : "") + ".";
     if (r.type === "web")
       return head + quoted(end(r.title)) + (r.year ? " " + r.year + "," : "") + (link ? " " + link.replace(/^https?:\/\//, "") + "." : "");
+    if (r.type === "thesis")
+      return head + italEnd(r.title) + (r.year ? " " + end(r.year) : "") + " " + end([r.publisher, thesisKind(r, style)].filter(Boolean).join(", "));
     const trM = tNames(r);
     return [head + italEnd(r.title), origOf(r) ? end(origOf(r)) : "", trM.length ? T2.translatedBy + " " + join(trM, T2.and) + "," : "", end([r.publisher, r.year].filter(Boolean).join(", "))].filter(Boolean).join(" ");
   }
@@ -11298,6 +11401,8 @@ function entryOf(style, r, n) {
       return head + quoted(r.title + ",") + " " + lc(T2.in) + " " + ital(r.container) + (r.editors.length ? ", " + join(r.editors.map((x) => (x.given ? initials(x.given) + " " : "") + x.family), T2.and) + ", Ed" + (r.editors.length > 1 ? "s" : "") + "." : "") + " " + end([[r.place, r.publisher].filter(Boolean).join(": "), r.year, r.pages ? "pp. " + r.pages : ""].filter(Boolean).join(", "));
     if (r.type === "web")
       return head + quoted(r.title + ".") + (link ? " [Online]. Available: " + link : "");
+    if (r.type === "thesis")
+      return head + quoted(r.title + ",") + " " + end([thesisKind(r, style), r.publisher, r.place, r.year].filter(Boolean).join(", "));
     return [head + ital(r.title) + ".", end([[r.place, r.publisher].filter(Boolean).join(": "), r.year].filter(Boolean).join(", "))].filter(Boolean).join(" ");
   }
   return r.title;
@@ -11328,6 +11433,8 @@ function harvardEntry(r) {
   const title = who ? italEnd(r.title) : ital(r.title);
   if (r.type === "web")
     return head(title) + tail;
+  if (r.type === "thesis")
+    return [head(title), end(thesisKind(r, "harvard")), r.publisher ? end(r.publisher) : ""].filter(Boolean).join(" ") + tail;
   const ed = r.edition ? end(T2.edition === WS_CITE_TERMS_EN.edition ? editionOf(r.edition).replace(/ ed\.$/, " edn") : editionOf(r.edition)) : "";
   const tr = (r.translators || []).map((x) => (x.given ? harvInitials(x.given) + " " : "") + x.family);
   const where = [pub, r.series ? "(" + r.series + ")" : ""].filter(Boolean).join(" ");
@@ -11343,7 +11450,7 @@ function noteOf(r, it, first) {
   const short = r.title.split(/[:.?!]/)[0].trim().replace(/^(a|an|the)\s+/i, "").split(/\s+/).slice(0, 4).join(" ");
   const whoShort = a.length > 3 ? fam(a[0]) + " et al." : join(a.map(fam), T2.and);
   if (!first) {
-    if (r.type === "article" || r.type === "chapter" || r.type === "web")
+    if (r.type === "article" || r.type === "chapter" || r.type === "web" || r.type === "thesis")
       return [whoShort, loc ? quoted(short + ",") + " " + loc + "." : quoted(short + ".")].filter(Boolean).join(", ");
     return end([whoShort, ital(short), loc].filter(Boolean).join(", "));
   }
@@ -11353,6 +11460,8 @@ function noteOf(r, it, first) {
     return (who ? who + ", " : "") + quoted(r.title + ",") + " " + ital(r.container) + (r.volume ? " " + r.volume : "") + (r.issue ? ", no. " + r.issue : "") + (r.year ? " (" + r.year + ")" : "") + (loc ? ": " + loc : r.pages ? ": " + r.pages : "") + ".";
   if (r.type === "chapter")
     return (who ? who + ", " : "") + quoted(r.title + ",") + " " + lc(T2.in) + " " + ital(r.container) + (r.editors.length ? ", " + T2.ed + " " + join(r.editors.map(full), T2.and) : "") + " (" + [pub, r.year].filter(Boolean).join(", ") + ")" + (loc ? ", " + loc : "") + ".";
+  if (r.type === "thesis")
+    return (who ? who + ", " : "") + quoted(r.title) + " (" + [thesisKind(r, "chicago"), r.publisher, r.year].filter(Boolean).join(", ") + ")" + (loc ? ", " + loc : "") + ".";
   if (r.type === "web") {
     const tail = [r.year, r.accessed ? T2.accessed + " " + dayOf(r.accessed) : "", doiLink(r), loc].filter(Boolean).join(", ");
     return (who ? who + ", " : "") + (tail ? quoted(r.title + ",") + " " + tail + "." : quoted(r.title + "."));
@@ -11437,17 +11546,22 @@ function wsCiteTemplate(tpl, r, it, n) {
   });
   return fill(groups).replace(/\s+([.,;:])/g, "$1").replace(/\s{2,}/g, " ").trim().split("").join("[").split("").join("]");
 }
+var collator = () => {
+  try {
+    return new Intl.Collator(T2.code === "zh-Hans" ? "zh" : T2.code || "en", { numeric: true });
+  } catch {
+    return new Intl.Collator("en", { numeric: true });
+  }
+};
+var namesKey = (r) => {
+  const a = r.authors.length ? r.authors : r.editors;
+  return a.length ? a.map((x) => x.family + ", " + x.given).join("; ") : r.title;
+};
+var refCompare = (co, a, b) => co.compare(namesKey(a), namesKey(b)) || co.compare(a.year, b.year) || co.compare(a.title, b.title);
+var letter = (i) => (i >= 26 ? letter(Math.floor(i / 26) - 1) : "") + String.fromCharCode(97 + i % 26);
 function wsCiter(style, lib, custom, heading, terms, opts) {
   const use = style === "ieee" || !terms ? WS_CITE_TERMS_EN : terms;
-  const within = (fn) => {
-    const was = T2;
-    T2 = use;
-    try {
-      return fn();
-    } finally {
-      T2 = was;
-    }
-  };
+  const within = (fn) => wsWithTerms(use, fn);
   const order = [];
   const noted = /* @__PURE__ */ new Set();
   const cu = custom || WS_CITE_CUSTOM_DEFAULT;
@@ -11470,6 +11584,9 @@ function wsCiter(style, lib, custom, heading, terms, opts) {
       return "";
     return loc && loc !== last.loc ? T2.ibid + ", " + loc + "." : end(T2.ibid);
   };
+  const dated = style === "apa" || style === "chicago-ad" || style === "harvard" || style === "custom" && !numbered;
+  const lettered = /* @__PURE__ */ new Map();
+  const ref = (key) => lettered.get(key) || lib.get(key);
   return {
     cite(c, at) {
       return within(() => citeIn(c, at));
@@ -11479,8 +11596,44 @@ function wsCiter(style, lib, custom, heading, terms, opts) {
     },
     heading() {
       return heading && heading.trim() ? heading.trim() : def.heading;
+    },
+    prepare(cites) {
+      within(() => prepareIn(cites));
     }
   };
+  function prepareIn(cites) {
+    lettered.clear();
+    if (!dated)
+      return;
+    const groups = /* @__PURE__ */ new Map();
+    const seen = /* @__PURE__ */ new Set();
+    for (const c of cites) {
+      if (c.items.some((it) => !lib.has(it.key)))
+        continue;
+      for (const it of c.items) {
+        const r = lib.get(it.key);
+        if (!r || seen.has(it.key))
+          continue;
+        seen.add(it.key);
+        const g = namesKey(r) + "\n" + r.year;
+        const same = groups.get(g);
+        if (same)
+          same.push(r);
+        else
+          groups.set(g, [r]);
+      }
+    }
+    const co = collator();
+    for (const g of groups.values()) {
+      if (g.length < 2)
+        continue;
+      g.sort((a, b) => co.compare(a.title, b.title));
+      g.forEach((r, i) => lettered.set(r.key, Object.assign({}, r, {
+        year: (r.year || (style === "harvard" ? harvNd() : T2.nd) + "-") + letter(i),
+        origYear: r.origYear === r.year ? "" : r.origYear
+      })));
+    }
+  }
   function citeIn(c, at) {
     if (!c.items.length || c.items.some((it) => !lib.has(it.key)))
       return null;
@@ -11490,7 +11643,7 @@ function wsCiter(style, lib, custom, heading, terms, opts) {
         last = null;
       const solo = found.length === 1 && !(at && at.inNote) ? found[0] : null;
       const parts = found.map((it) => {
-        const r = lib.get(it.key);
+        const r = ref(it.key);
         if (!r)
           return "";
         num(it.key);
@@ -11504,11 +11657,16 @@ function wsCiter(style, lib, custom, heading, terms, opts) {
       last = solo ? { key: solo.key, loc: bareLoc(wsLocator(solo.locator)) } : null;
       const ps = parts.filter(Boolean);
       const text = ps.map((p, i) => i < ps.length - 1 ? p.replace(/\.(\u201d?)$/, "$1") : p).join("; ");
-      const r0 = c.narrative ? lib.get(found[0].key) : void 0;
+      const r0 = c.narrative ? ref(found[0].key) : void 0;
       return { text, note: true, lead: r0 ? tokenValue("etal", r0, found[0], 0) : void 0 };
     }
-    const pieces = found.map((it) => {
-      const r = lib.get(it.key);
+    const co = style === "apa" && !c.narrative && found.length > 1 && found.every((it) => !it.prefix) ? collator() : null;
+    const inOrder = co ? found.slice().sort((x, y) => {
+      const a = ref(x.key), b = ref(y.key);
+      return a && b ? refCompare(co, a, b) : 0;
+    }) : found;
+    const pieces = inOrder.map((it) => {
+      const r = ref(it.key);
       if (!r)
         return "";
       const n = num(it.key);
@@ -11517,7 +11675,7 @@ function wsCiter(style, lib, custom, heading, terms, opts) {
     });
     if (c.narrative) {
       const it = found[0];
-      const r = lib.get(it.key);
+      const r = ref(it.key);
       if (!r)
         return null;
       if (style === "ieee")
@@ -11529,7 +11687,7 @@ function wsCiter(style, lib, custom, heading, terms, opts) {
     if (style === "ieee") {
       const ns = found.map((it) => num(it.key));
       const each = found.map((it, k) => {
-        const r = lib.get(it.key);
+        const r = ref(it.key);
         return { n: ns[k], s: r ? (it.prefix ? it.prefix + " " : "") + "[" + inTextOf(style, r, it, ns[k], false) + "]" : "" };
       });
       return { text: each.sort((x, y) => x.n - y.n).map((e) => e.s).filter(Boolean).join(", "), note: false };
@@ -11539,13 +11697,13 @@ function wsCiter(style, lib, custom, heading, terms, opts) {
     return { text: wrap(pieces.join("; ")), note: false };
   }
   function listIn() {
+    const co = collator();
     const keys = numbered ? order.slice() : order.slice().sort((x, y) => {
-      const a = lib.get(x), b = lib.get(y);
-      const k = (r) => r ? ((r.authors[0] || r.editors[0] || { family: r.title, given: "" }).family + " " + r.year + " " + r.title).toLowerCase() : "";
-      return k(a) < k(b) ? -1 : k(a) > k(b) ? 1 : 0;
+      const a = ref(x), b = ref(y);
+      return a && b ? refCompare(co, a, b) : 0;
     });
     return keys.map((key) => {
-      const r = lib.get(key);
+      const r = ref(key);
       if (!r)
         return "";
       const n = order.indexOf(key) + 1;
@@ -11602,6 +11760,11 @@ function wsCiteThinText(keys, library) {
 }
 function wsCiteSections(sections, citer) {
   let n = 0, any = false;
+  const all2 = [];
+  for (const sec of sections)
+    if (!sec.folder && !sec.bib && sec.markdown)
+      all2.push(...wsFindCitations(wsCiteMask(sec.markdown)));
+  citer.prepare(all2);
   for (const sec of sections) {
     if (sec.folder || sec.bib || !sec.markdown)
       continue;
@@ -11651,8 +11814,9 @@ function wsCiteSections(sections, citer) {
     sections.push({ title: citer.heading(), markdown: list.join("\n\n"), path: "", depth: 0, bib: true, entries: list });
   return any;
 }
-function wsCiteEntryText(style, r, custom) {
-  const md = style === "custom" ? wsCiteTemplate((custom || WS_CITE_CUSTOM_DEFAULT).entry, r, null, 0) : entryOf(style, r, 1);
+function wsCiteEntryText(style, r, custom, terms) {
+  const use = style === "ieee" || !terms ? WS_CITE_TERMS_EN : terms;
+  const md = wsWithTerms(use, () => style === "custom" ? wsCiteTemplate((custom || WS_CITE_CUSTOM_DEFAULT).entry, r, null, 0) : entryOf(style, r, 1));
   return md.replace(/^\[\d+\]\s*/, "").replace(/\*/g, "");
 }
 var WS_CITE_SAMPLES = [
@@ -16547,6 +16711,7 @@ function wsCiteExtension(plugin, cm) {
         return Decoration2.none;
       const style = s.citeStyle || "apa";
       const custom = { inText: s.citeCustomInText, around: s.citeCustomAround, entry: s.citeCustomEntry };
+      let terms = null;
       const b = new RangeSetBuilder2();
       let done = 0;
       for (const { from, to } of view.visibleRanges) {
@@ -16565,7 +16730,7 @@ function wsCiteExtension(plugin, cm) {
               continue;
             const title = known ? c.items.map((it) => {
               const r = lib.get(it.key);
-              return r ? wsCiteEntryText(style, r, custom) : "";
+              return r ? wsCiteEntryText(style, r, custom, terms || (terms = plugin.citeTerms())) : "";
             }).join("\n") : "Not in your library: " + c.items.filter((it) => !lib.has(it.key)).map((it) => "@" + it.key).join(", ");
             b.add(line.from + c.from, line.from + c.to, Decoration2.mark({ class: known ? "ws-cite" : "ws-cite ws-cite-missing", attributes: { title } }));
           }
@@ -36402,7 +36567,7 @@ var menuMethods = {
     };
     const typing = () => document.activeElement === search;
     const vimKeys = () => this.isVimKeysOn();
-    const letter = (fn) => () => {
+    const letter2 = (fn) => () => {
       if (typing() || !vimKeys())
         return true;
       fn();
@@ -36430,10 +36595,10 @@ var menuMethods = {
     };
     modal.scope.register([], "ArrowRight", always(() => sideways(1, enterDrawer)));
     modal.scope.register([], "ArrowLeft", always(() => sideways(-1, collapse)));
-    modal.scope.register([], "j", letter(() => move(1)));
-    modal.scope.register([], "k", letter(() => move(-1)));
-    modal.scope.register([], "l", letter(() => sideways(1, enterDrawer)));
-    modal.scope.register([], "h", letter(() => sideways(-1, collapse)));
+    modal.scope.register([], "j", letter2(() => move(1)));
+    modal.scope.register([], "k", letter2(() => move(-1)));
+    modal.scope.register([], "l", letter2(() => sideways(1, enterDrawer)));
+    modal.scope.register([], "h", letter2(() => sideways(-1, collapse)));
     modal.scope.register([], "Enter", () => {
       void activate();
       return false;

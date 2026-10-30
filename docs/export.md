@@ -57,9 +57,15 @@ Keys can use any alphabet (`@Søhr_1938`). A key with other punctuation in it, o
 
 A reprint or a translation keeps its original year (`origdate`, `original-date`): (1867; Paris: PUF, 1993) in a Chicago note, 1867/1993 in APA. Translators, editions, series and the day a web page was read come along too.
 
+Two works by the same authors in the same year are told apart with a letter, in the text and in the list: (Smith, 2020a), (Smith, 2020b), lettered in their titles' order. In APA, several sources in one citation come in the list's order, (Brown, 2018; Zeta, 2019), unless a prefix like "see" makes the order yours. The list sorts in your book's alphabet, so Ávila files with the A's.
+
+A locator says what it points at in your words or the style's: `p. 12` or a bare `12` is a page, `12-15` pages (pp. 12–15 in APA), `chapter 3` or `cap. 3` a chapter (chap. 3, or cap. 3 in a Portuguese book), and `sec.`, `vol.`, `fig.`, `line`, `para.`, `n.` and `fol.` likewise. A word it doesn't know (`art. 5`) prints as you wrote it.
+
+A thesis is listed as one: *Title* [Doctoral dissertation, University] in APA, PhD diss. in Chicago, Tese (Doutorado) in a Portuguese book. Its kind comes from the library when it names one (BibLaTeX's `type`, CSL's `genre`), else from `@phdthesis` or `@mastersthesis`. A CSL-JSON file from Zotero's own export is read by each item's citation key, not its Zotero address.
+
 Harvard follows Cite Them Right: (Woolf, 1929, p. 108) in the text, Woolf, V. (1929) in the list. In Chicago notes, turn on **Ibid.** and a note citing the same source as the one before it says Ibid. (Ebd. in German, Там же in Russian). An export tells you which cited sources have no year or title.
 
-The words around the fields follow your book's language (Settings → Word-Smith → **Language**): French gets "trad.", "2e éd.", "s.d." and « », German "übers. v." and „ “. A language pack can change any of them with a `cite-` line (`- cite-and: &`, `- cite-ibid: Id.`). IEEE stays in English.
+The words around the fields follow your book's language (Settings → Word-Smith → **Language**): French gets "trad.", "2e éd.", "s.d." and « », German "übers. v." and „ “. A language pack can change any of them with a `cite-` line (`- cite-and: &`, `- cite-ibid: Id.`, `- cite-thesis-phd: Tese de doutorado`, `- cite-loc-chapter: cap.`). IEEE stays in English.
 
 ## Where it stops
 
