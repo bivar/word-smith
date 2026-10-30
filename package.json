@@ -8,7 +8,7 @@
     "build": "node esbuild.config.mjs",
     "check": "tsc --noEmit",
     "lint": "eslint src",
-    "test": "node test/smoke.js && node test/citations.js && node test/omml.js"
+    "test": "node test/smoke.js && node test/citations.js && node test/omml.js && node test/margins.js"
   },
   "devDependencies": {
     "@codemirror/commands": "6.6.2",

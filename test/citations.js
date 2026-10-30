@@ -1,43 +1,12 @@
 'use strict';
 // The citer over a small library: what a style prints in the text and in the
-// list. src/core/citations.ts is bundled in memory and loaded with the same
-// stand-in for the `obsidian` package the smoke test uses.
+// list. src/core/citations.ts is bundled in memory (test/bundle.js).
 //
 //   node test/citations.js
-const path = require('path');
-const Module = require('module');
-const esbuild = require('esbuild');
+const { bundle, tally } = require('./bundle');
 
-const ROOT = path.join(__dirname, '..');
-let pass = 0, fail = 0;
-const is = (what, got, want) => {
-	if (got === want) { pass++; return; }
-	fail++;
-	console.log('  FAIL ' + what + ': got ' + JSON.stringify(got) + ', want ' + JSON.stringify(want));
-};
-
-const stub = {
-	Plugin: class {}, PluginSettingTab: class {}, Setting: class {}, Modal: class {}, Menu: class {},
-	MarkdownView: class {}, TFile: class {}, TFolder: class {}, ItemView: class {}, FuzzySuggestModal: class {},
-	Notice: class {}, Component: class {}, Events: class {},
-	setIcon() {}, addIcon() {}, sanitizeHTMLToDom() {}, normalizePath: (p) => p, Platform: {},
-};
-const load = Module._load;
-Module._load = function (request) {
-	if (request === 'obsidian') return stub;
-	if (/^@codemirror\//.test(request)) return {};
-	return load.apply(this, arguments);
-};
-
-const built = esbuild.buildSync({
-	entryPoints: [path.join(ROOT, 'src/core/citations.ts')], bundle: true, platform: 'node', format: 'cjs',
-	write: false, external: ['obsidian', '@codemirror/*'], logLevel: 'error',
-});
-const m = new Module(path.join(ROOT, 'src/core/citations.js'));
-m.filename = m.id;
-m.paths = Module._nodeModulePaths(ROOT);
-m._compile(built.outputFiles[0].text, m.filename);
-const { wsParseBibtex, wsParseCslJson, wsFindCitations, wsCiter, wsCiteTermsFor, wsCiteSections, wsCiteEntryText } = m.exports;
+const { is, done } = tally();
+const { wsParseBibtex, wsParseCslJson, wsFindCitations, wsCiter, wsCiteTermsFor, wsCiteSections, wsCiteEntryText } = bundle('src/core/citations.ts');
 
 const lib = wsParseBibtex(`
 @book{smith2020a, author={Smith, John}, title={First Book}, year={2020}, publisher={X}}
@@ -113,5 +82,4 @@ is('harvard: a doctoral thesis', entry('harvard', 'silva'), 'Silva, M. (2021) *U
 is('mla: a doctoral thesis', entry('mla', 'silva'), 'Silva, Maria. *Uma tese*. 2021. UFPE, PhD dissertation.');
 is('chicago-notes: a thesis note', /Maria Silva, “Uma tese” \(PhD diss\., UFPE, 2021\), 4\./.test(book('chicago-notes', 'As she says [@silva, 4].').text), true);
 
-console.log(pass + ' passed, ' + fail + ' failed');
-process.exit(fail ? 1 : 0);
+done();

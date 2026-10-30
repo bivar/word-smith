@@ -48,12 +48,14 @@ export const WS_PAPERS: WsPaper[] = [
 // list is nine chances for a size to disagree with itself, and the last time
 // this plugin kept one list in two places the Blocked flag was grey in the file
 // explorer for a release.
-export function wsPaperMicrons(paper: WsPaper) {
+export function wsPaperMicrons(paper: WsPaper, mar?: WsMargins) {
 	const mic = (twips: number) => Math.round(twips * 25400 / 1440);
 	const inch = (twips: number) => twips / 1440;
+	const m = mar || { top: paper.mar, right: paper.mar, bottom: paper.mar, left: paper.mar };
 	return {
 		width: mic(paper.w), height: mic(paper.h),
-		margin: inch(paper.mar)
+		// (each side its own since B11: ABNT's 3 cm at the top and the left, 2 cm at the bottom and the right)
+		margins: { top: inch(m.top), right: inch(m.right), bottom: inch(m.bottom), left: inch(m.left) }
 	};
 }
 
@@ -66,6 +68,50 @@ export function wsPaperOf(o: WsExportOpts | null | undefined) {
 	const id = oo.paperId || (oo.a4 ? 'a4' : 'letter');
 	for (const p of WS_PAPERS) if (p.id === id) return p;
 	return WS_PAPERS[0];
+}
+
+// ── Margins (B11) ─────────────────────────────────────────────────────────
+//
+// THE PAPER'S OWN UNLESS THE WRITER SETS THEIRS. A manuscript's inch on Letter and a trim size's three quarters
+// travel with the paper (above); an academic page is set by its style instead: an inch all round for APA, MLA and
+// Chicago, 2.5 cm where a university asks for it, and ABNT's 3 cm at the top and on the left (the side it is bound
+// on) with 2 cm at the bottom and on the right. Or four of the writer's own. One answer, in twips, for the .docx,
+// the PDF and the preview, so the page on screen is the page in the file.
+export interface WsMargins { top: number; right: number; bottom: number; left: number }
+export const WS_MARGIN_PRESETS: Record<string, string> = { '1in': '1in', '2.5cm': '2.5cm', abnt: '3cm 2cm 2cm 3cm' };
+// a length as a writer types it, in twips: 2.5cm, 2,5 cm, 25mm, 1in, 72pt; a bare 0. Null for anything else
+export function wsLengthTwips(s: string): number | null {
+	const m = /^(\d+(?:[.,]\d+)?|[.,]\d+)\s*(in|cm|mm|pt)?$/i.exec(String(s || '').trim());
+	if (!m) return null;
+	const n = Number(m[1].replace(',', '.'));
+	const unit = (m[2] || '').toLowerCase();
+	if (!unit) return n === 0 ? 0 : null;
+	return Math.round(n * (unit === 'in' ? 1440 : unit === 'cm' ? 1440 / 2.54 : unit === 'mm' ? 144 / 2.54 : 20));
+}
+/** up to four lengths, as CSS's margin: one for every side, two for top and bottom then the sides, three for the top,
+ * the sides and the bottom, four for top, right, bottom, left. Null where one is not a length */
+export function wsParseMargins(spec: string): WsMargins | null {
+	const parts = String(spec || '').trim().split(/\s+/).filter(Boolean).map(wsLengthTwips);
+	if (!parts.length || parts.length > 4 || parts.some((x) => x == null)) return null;
+	const [t, r = t, b = t, l = r] = parts as number[];
+	return { top: t, right: r, bottom: b, left: l };
+}
+/** the margins an export is set with, in twips: the paper's own, a preset, or the writer's; theirs only where they
+ * leave an inch of text each way, else the paper's own */
+export function wsMarginsOf(o: WsExportOpts | null | undefined): WsMargins {
+	const paper = wsPaperOf(o);
+	const own = { top: paper.mar, right: paper.mar, bottom: paper.mar, left: paper.mar };
+	const id = String((o && o.margins) || '');
+	const m = wsParseMargins(id === 'custom' ? String((o && o.marginsCustom) || '') : WS_MARGIN_PRESETS[id] || '');
+	if (!m || paper.w - m.left - m.right < 1440 || paper.h - m.top - m.bottom < 1440) return own;
+	return m;
+}
+// how far a Word header and footer sit from the paper's edge: half an inch with the paper's own margins, as ever; with
+// the writer's, half of the margin each sits in, where the PDF and the preview draw them
+export function wsHeaderDistances(o: WsExportOpts | null | undefined): { header: number; footer: number } {
+	const m = wsMarginsOf(o), p = wsPaperOf(o);
+	if (m.top === p.mar && m.bottom === p.mar && m.left === p.mar && m.right === p.mar) return { header: 720, footer: 720 };
+	return { header: Math.round(m.top / 2), footer: Math.round(m.bottom / 2) };
 }
 
 // Twips to CSS inches, two decimals: 11906 → "8.27in", which is what the
@@ -620,7 +666,7 @@ export function wsPara(runs: WsRun[], style: string, opts?: { noIndent?: boolean
 // table ran past the margin.
 export function wsTable(rows: string[][], o?: (WsExportOpts & WsExportBuild) | null) {
 	const width = Math.max.apply(null, rows.map((r) => r.length));
-	const paper = wsPaperOf(o), textW = Math.max(1440, paper.w - 2 * paper.mar), colW = Math.floor(textW / width);
+	const paper = wsPaperOf(o), mar = wsMarginsOf(o), textW = Math.max(1440, paper.w - mar.left - mar.right), colW = Math.floor(textW / width);
 	const grid = '<w:tblGrid>' + new Array(width).fill('<w:gridCol w:w="' + colW + '"/>').join('') + '</w:tblGrid>';
 	// (a row never split across two pages, as the preview and the PDF set it: `cantSplit`)
 	const body = rows.map((cells, ri) => '<w:tr><w:trPr><w:cantSplit/></w:trPr>' + new Array(width).fill(0).map((_, ci) => {
@@ -1493,6 +1539,12 @@ export function wsTocPagesFill(doc: Document | null) {
 }
 
 // Assemble the whole package. `sections` is [{ title, markdown }].
+// a Word section's margins (B11): each side its own, the header and the footer half a margin in
+function wsPgMar(o: WsExportOpts | null | undefined) {
+	const m = wsMarginsOf(o), d = wsHeaderDistances(o);
+	return '<w:pgMar w:top="' + m.top + '" w:right="' + m.right + '" w:bottom="' + m.bottom + '" w:left="' + m.left + '"'
+		+ ' w:header="' + d.header + '" w:footer="' + d.footer + '" w:gutter="0"/>';
+}
 export function wsBuildDocx(sections: WsExportSection[], opt: WsExportRun | null | undefined) {
 	const o = opt || {};
 	// ── PICTURES: one part per file, its relationship, its content type ───
@@ -1501,9 +1553,9 @@ export function wsBuildDocx(sections: WsExportSection[], opt: WsExportRun | null
 	// at 96 to the inch): the width the note asked for, else the picture's
 	// own; never wider than the column nor taller than 85% of the page, so a
 	// caption fits under it on the same page. A file used twice is one part.
-	const sheet = wsPaperOf(o);
-	const colW = (sheet.w - 2 * sheet.mar) * 635;
-	const colH = Math.round((sheet.h - 2 * sheet.mar) * 635 * 0.85);
+	const sheet = wsPaperOf(o), sheetMar = wsMarginsOf(o);
+	const colW = (sheet.w - sheetMar.left - sheetMar.right) * 635;
+	const colH = Math.round((sheet.h - sheetMar.top - sheetMar.bottom) * 635 * 0.85);
 	const media: { rid: string; name: string; ext: string; bytes: Uint8Array<ArrayBuffer> }[] = [];
 	const ridOf = new Map<Uint8Array<ArrayBuffer>, string>();
 	let picId = 0;
@@ -1585,12 +1637,9 @@ export function wsBuildDocx(sections: WsExportSection[], opt: WsExportRun | null
 		// told otherwise, so the first text page is still 2 and the running
 		// header still reads it.
 		{
-			const tp = wsPaperOf(o);
 			body.push('<w:p><w:pPr><w:sectPr>'
-				+ '<w:pgSz w:w="' + tp.w + '" w:h="' + tp.h + '"/>'
-				+ '<w:pgMar w:top="' + tp.mar + '" w:right="' + tp.mar + '"'
-				+ ' w:bottom="' + tp.mar + '" w:left="' + tp.mar + '"'
-				+ ' w:header="720" w:footer="720" w:gutter="0"/>'
+				+ '<w:pgSz w:w="' + wsPaperOf(o).w + '" w:h="' + wsPaperOf(o).h + '"/>'
+				+ wsPgMar(o)
 				+ '<w:vAlign w:val="center"/>'
 				+ '</w:sectPr></w:pPr></w:p>');
 		}
@@ -1621,7 +1670,7 @@ export function wsBuildDocx(sections: WsExportSection[], opt: WsExportRun | null
 		// phone, Google Docs or LibreOffice show until somebody updates it. The field's result is written in now, as Word
 		// writes it: an entry a paragraph, a link to its chapter's bookmark, stepped in by its level, its page (the
 		// preview's, which the PDF prints) after a dotted tab at the text's right edge; Word recomputes them on update
-		const tp = wsPaperOf(o), tabAt = Math.max(1440, tp.w - 2 * tp.mar);
+		const tp = wsPaperOf(o), tm = wsMarginsOf(o), tabAt = Math.max(1440, tp.w - tm.left - tm.right);
 		const stepOf = wsTocSteps(o, sections), pageOf = o.tocPageOf || {};
 		// (the structure's numbers, #79)
 		const tocNums = wsHeadNumbers(o, sections);
@@ -1819,9 +1868,7 @@ export function wsBuildDocx(sections: WsExportSection[], opt: WsExportRun | null
 		// book's trim size is a page and not a variant of Letter.
 		+ '<w:sectPr>' + headerRef
 		+ '<w:pgSz w:w="' + paper.w + '" w:h="' + paper.h + '"/>'
-		+ '<w:pgMar w:top="' + paper.mar + '" w:right="' + paper.mar + '"'
-		+ ' w:bottom="' + paper.mar + '" w:left="' + paper.mar + '"'
-		+ ' w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>'
+		+ wsPgMar(o) + '</w:sectPr>'
 		+ '</w:body></w:document>';
 
 	const types = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
@@ -1880,7 +1927,7 @@ export function wsBuildDocx(sections: WsExportSection[], opt: WsExportRun | null
 	];
 	if (wantSettings) entries.push({ name: 'word/settings.xml', bytes: wsUtf8(settingsXml) });
 	if (noteXml.length) entries.push({ name: 'word/' + noteTag + 's.xml', bytes: wsUtf8(notesPart) });
-	const contentW = paper.w - 2 * paper.mar;
+	const contentMar = wsMarginsOf(o), contentW = paper.w - contentMar.left - contentMar.right;
 	if (wantHeader) {
 		entries.push({ name: 'word/header1.xml',
 			bytes: wsUtf8(wsHeadSide(o) === 'left'

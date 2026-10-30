@@ -1,42 +1,12 @@
 'use strict';
 // Math for Word (B10): MathJax's MathML, as Obsidian's MathJax writes it, turned into Office Math, and a .docx
-// carrying it. src/core/omml.ts and src/core/export-page.ts are bundled in memory, as test/citations.js does.
+// carrying it. src/core/omml.ts and src/core/export-page.ts are bundled in memory (test/bundle.js).
 //
 //   node test/omml.js
-const path = require('path');
-const Module = require('module');
-const esbuild = require('esbuild');
+const { bundle, tally } = require('./bundle');
 
-const ROOT = path.join(__dirname, '..');
-let pass = 0, fail = 0;
-const is = (what, got, want) => {
-	if (got === want) { pass++; return; }
-	fail++;
-	console.log('  FAIL ' + what + ': got ' + JSON.stringify(got) + ', want ' + JSON.stringify(want));
-};
+const { is, done } = tally();
 const has = (what, text, bit) => is(what + ' (' + bit + ')', String(text).indexOf(bit) !== -1, true);
-
-const stub = {
-	Plugin: class {}, PluginSettingTab: class {}, Setting: class {}, Modal: class {}, Menu: class {},
-	MarkdownView: class {}, TFile: class {}, TFolder: class {}, ItemView: class {}, FuzzySuggestModal: class {},
-	Notice: class {}, Component: class {}, Events: class {},
-	setIcon() {}, addIcon() {}, sanitizeHTMLToDom() {}, normalizePath: (p) => p, Platform: {},
-};
-const load = Module._load;
-Module._load = function (request) {
-	if (request === 'obsidian') return stub;
-	if (/^@codemirror\//.test(request)) return {};
-	return load.apply(this, arguments);
-};
-const bundle = (entry) => {
-	const built = esbuild.buildSync({ entryPoints: [path.join(ROOT, entry)], bundle: true, platform: 'node', format: 'cjs',
-		write: false, external: ['obsidian', '@codemirror/*'], logLevel: 'error' });
-	const m = new Module(path.join(ROOT, entry.replace(/\.ts$/, '.js')));
-	m.filename = m.id;
-	m.paths = Module._nodeModulePaths(ROOT);
-	m._compile(built.outputFiles[0].text, m.filename);
-	return m.exports;
-};
 const { wsMathmlToOmml, wsParseMathml } = bundle('src/core/omml.ts');
 const { wsBuildDocx } = bundle('src/core/export-page.ts');
 
@@ -109,5 +79,4 @@ const plain = Buffer.from(wsBuildDocx([{ title: 'One', markdown: md, path: 'one.
 is('docx: no figures, no math', plain.indexOf('<m:oMath'), -1);
 has('docx: …the TeX as written', plain, '$x \\in \\mathbb{R}$');
 
-console.log(pass + ' passed, ' + fail + ' failed');
-process.exit(fail ? 1 : 0);
+done();

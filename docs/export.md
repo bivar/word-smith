@@ -29,6 +29,8 @@ What you decide once lives in **Settings → Export**: your name, **Round the wo
 
 Nine paper sizes: Letter, A4, Legal, Executive, B5, A5, plus the trim sizes a novel is actually printed at: trade paperback, digest and mass market. Margins scale with the paper.
 
+**Margins** (Settings → Export → Pages) are the paper's own unless you pick others: an inch all round (APA, MLA, Chicago), 2.5 cm all round, ABNT's 3 cm at the top and on the left with 2 cm at the bottom and on the right, or your own, written as CSS writes them (`3cm 2cm 2cm 3cm` is top, right, bottom, left; one length sets every side). The Word file, the PDF and the preview all take them, and the running header and page number sit half a margin in. Margins that would leave less than an inch of text fall back to the paper's own.
+
 **Font** searches the fonts on your machine, each shown in its own face. Type one you don't have and it's still accepted, because a manuscript set for someone else's computer is a real thing to want.
 
 ## The preview

@@ -13,7 +13,7 @@ import { WS_IMAGE_MIME, wsImageRefRe, wsParseImageRef, wsMdImageLink, wsRelPath,
 import type { WsWheelAcc } from '../core/preamble';
 import { wsCiteMissing, wsCiteMissingText, wsCiteSections, wsCiteThin, wsCiteThinText } from '../core/citations';
 import { wsT, wsTIn, wsUiJoin } from '../core/ui-text';
-import { wsPageStarts, WS_FRAME_SHELL, WS_TITLE_SIZE_EM, WS_EXPORT_FOLDER_HEADINGS_DEFAULT, WS_EXPORT_PREVIEW_AUTO_BYTES, wsHtmlBlocks, wsFigureSources, wsDropCallouts, wsDropTags, WS_PAPERS, wsAnchorId, wsBuildDocx, wsBuildEpub, wsCatch, wsCtxScope, wsExportRoot, wsFileHeadLevel, wsFormatHasPages, wsHeadSizeEm, wsHostTint, wsJoinMark, wsLineOfSnippet, wsLineTwips, wsPaperMicrons, wsPaperOf, wsSnippetOf, wsTitleWords, wsTocSteps, wsTwipIn, wsGlyphWord, wsIconInto, wsIsFile, wsIsFolder, wsStr, wsErrMsg, wsElOf } from '../core/preamble';
+import { wsPageStarts, WS_FRAME_SHELL, WS_TITLE_SIZE_EM, WS_EXPORT_FOLDER_HEADINGS_DEFAULT, WS_EXPORT_PREVIEW_AUTO_BYTES, wsHtmlBlocks, wsFigureSources, wsDropCallouts, wsDropTags, WS_PAPERS, wsAnchorId, wsBuildDocx, wsBuildEpub, wsCatch, wsCtxScope, wsExportRoot, wsFileHeadLevel, wsFormatHasPages, wsHeadSizeEm, wsHostTint, wsJoinMark, wsLineOfSnippet, wsLineTwips, wsPaperMicrons, wsPaperOf, wsMarginsOf, wsSnippetOf, wsTitleWords, wsTocSteps, wsTwipIn, wsGlyphWord, wsIconInto, wsIsFile, wsIsFolder, wsStr, wsErrMsg, wsElOf } from '../core/preamble';
 import type WordSmith from './plugin';
 
 // ── DRAWING A PICTURE (A568), with the engine Obsidian runs ─────────────
@@ -3249,13 +3249,18 @@ export const exportMethods = {
 		// with the paper because an inch of white on a 5.5-inch page is a
 		// different decision from an inch on Letter.
 		const paper = wsPaperOf(o);
-		const pw = wsTwipIn(paper.w), ph = wsTwipIn(paper.h), pm = wsTwipIn(paper.mar);
+		const pw = wsTwipIn(paper.w), ph = wsTwipIn(paper.h);
+		// EACH SIDE ITS OWN MARGIN (B11): the paper's own, or the writer's (ABNT's 3 cm top and left, 2 cm bottom and
+		// right); `pm` the left one, also the air between the flow's columns, which the pane measures rather than assumes
+		const mar = wsMarginsOf(o);
+		const mt = wsTwipIn(mar.top), mr = wsTwipIn(mar.right), mb = wsTwipIn(mar.bottom), ml = wsTwipIn(mar.left), pm = ml;
+		const pmAll = mt + ' ' + mr + ' ' + mb + ' ' + ml;
 		// THE CONTENT BOX, which is the page the preview paginates into.
-		// Written as a `calc` off the same three lengths rather than worked
+		// Written as a `calc` off the same lengths rather than worked
 		// out here: one writer for the paper, and a margin changed in
 		// `WS_PAPERS` cannot leave a stale number behind in this file.
-		const cw = 'calc(' + pw + ' - 2 * ' + pm + ')';
-		const ch = 'calc(' + ph + ' - 2 * ' + pm + ')';
+		const cw = 'calc(' + pw + ' - ' + ml + ' - ' + mr + ')';
+		const ch = 'calc(' + ph + ' - ' + mt + ' - ' + mb + ')';
 		// Air between paragraphs when there is no indent to separate them —
 		// see wsStylesXml. Half a line, matching the .docx's 120 twips.
 		// (a whole line when asked, A756: `lh`, the paragraph's own line height)
@@ -3288,7 +3293,7 @@ export const exportMethods = {
 			// printable at the manuscript's paper from any browser, and
 			// `preferCSSPageSize` in `exportPdfOptions` reads them.
 			// (the margin boxes in a rule of their own at the foot of the sheet, A751: see there)
-			+ '@page { size: ' + pw + ' ' + ph + '; margin: ' + pm + '; }'
+			+ '@page { size: ' + pw + ' ' + ph + '; margin: ' + pmAll + '; }'
 			// THE MARGIN BOXES' TYPE (#95, msguerra74: the PDF's running header in Times New Roman, the rest in the export's
 			// font). A margin box takes its font from the page, not from <body>, so it fell to Chromium's default serif. The
 			// page is given the export's font and the preview header's size (`.hdr`, 0.9em of the text), in a rule of its
@@ -3347,11 +3352,11 @@ export const exportMethods = {
 			// the file.
 			// THE NUMBER IN A BOX OF ITS OWN when it is not beside the header (A751), where it prints
 			+ (forScreen && pnAt !== 'top-' + side && pnAt !== 'none'
-				? '.pnum { position: absolute; ' + (pnAt.startsWith('top') ? 'top' : 'bottom') + ': calc(' + pm + ' / 2);'
-					+ (pnAt.endsWith('center') ? ' left: 0; right: 0; text-align: center;' : pnAt.endsWith('left') ? ' left: ' + pm + ';' : ' right: ' + pm + ';')
+				? '.pnum { position: absolute; ' + (pnAt.startsWith('top') ? 'top: calc(' + mt : 'bottom: calc(' + mb) + ' / 2);'
+					+ (pnAt.endsWith('center') ? ' left: 0; right: 0; text-align: center;' : pnAt.endsWith('left') ? ' left: ' + ml + ';' : ' right: ' + mr + ';')
 					+ ' font-size: 0.9em; color: inherit; }' : '')
 			+ ((head || pnAt === 'top-' + side) && forScreen
-				? '.hdr { position: absolute; top: calc(' + pm + ' / 2); ' + side + ': ' + pm + ';'
+				? '.hdr { position: absolute; top: calc(' + mt + ' / 2); ' + side + ': ' + (side === 'left' ? ml : mr) + ';'
 					// INHERITED, NOT PINNED: a pinned #111 on a dark sheet is the header
 					// present and unreadable. One writer for the ink: `inherit` walks to
 					// the sheet and on to the body, which is the element the dark toggle
@@ -3411,7 +3416,7 @@ export const exportMethods = {
 					+ '.stack { position: relative; width: ' + pw + '; margin: 0 auto; }'
 					+ '.sheet { position: absolute; left: 0; top: 0;'
 					+ ' box-sizing: border-box;'
-					+ ' width: ' + pw + '; height: ' + ph + '; padding: ' + pm + ';'
+					+ ' width: ' + pw + '; height: ' + ph + '; padding: ' + pmAll + ';'
 					+ ' background: #fff;'
 					+ ' box-shadow: 0 2px 10px rgba(0,0,0,0.45); }'
 					// OUT OF FLOW WHETHER OR NOT THERE IS A HEADER TO DRAW, and the box is
@@ -3491,7 +3496,7 @@ export const exportMethods = {
 					+ 'html.is-flow .flow { height: auto; columns: auto;'
 					+ ' overflow: visible; max-width: none; margin: 0;'
 					// (the sides only: a page's top and bottom margins are its seams, so each page is the paper's height)
-					+ ' padding: 0 ' + pm + '; }'
+					+ ' padding: 0 ' + mr + ' 0 ' + ml + '; }'
 
 					// …AND WHERE EACH PRINTED PAGE BEGINS: the page's seam (A804, below; a faint rule and the bare number
 					// until then), on the block `wsPageStarts` stamped
@@ -3508,13 +3513,13 @@ export const exportMethods = {
 					// sheets, and the next page's top margin with its header, each where the sheet in pages draws it (half a
 					// margin in); the fill before it makes the page the paper's height (`wsSeamFill`). TOMBSTONE: the dashed cut
 					// between two rows of text (A804), a page break drawn on one long sheet.
-					+ 'html.is-flow .seam { display: block; margin: 0 -' + pm + '; text-indent: 0; font-size: 0.9em; line-height: 1.3; }'
-					+ 'html.is-flow .seam-foot, html.is-flow .seam-head { position: relative; height: ' + pm + '; }'
-					+ 'html.is-flow .seam-foot > span { position: absolute; bottom: calc(' + pm + ' / 2); }'
-					+ 'html.is-flow .seam-head > span { position: absolute; top: calc(' + pm + ' / 2); }'
-					+ 'html.is-flow .seam .is-left { left: ' + pm + '; }'
+					+ 'html.is-flow .seam { display: block; margin: 0 -' + mr + ' 0 -' + ml + '; text-indent: 0; font-size: 0.9em; line-height: 1.3; }'
+					+ 'html.is-flow .seam-foot { position: relative; height: ' + mb + '; } html.is-flow .seam-head { position: relative; height: ' + mt + '; }'
+					+ 'html.is-flow .seam-foot > span { position: absolute; bottom: calc(' + mb + ' / 2); }'
+					+ 'html.is-flow .seam-head > span { position: absolute; top: calc(' + mt + ' / 2); }'
+					+ 'html.is-flow .seam .is-left { left: ' + ml + '; }'
 					+ 'html.is-flow .seam .is-center { left: 0; right: 0; text-align: center; }'
-					+ 'html.is-flow .seam .is-right, html.is-flow .seam-hdr { right: ' + pm + '; }'
+					+ 'html.is-flow .seam .is-right, html.is-flow .seam-hdr { right: ' + mr + '; }'
 					// the air: the ground, wider than the sheet so the sheet's shadow does not run through it, its edges shaded
 					// the air: the ground, THE PAPER'S WIDTH EXACTLY, its edges shaded. Wider (48px past the paper each side, to hide
 					// the sheet's side shadow) it read as a grey bar, then, unshaded, as two light notches in the shadow beside the
@@ -3555,7 +3560,7 @@ export const exportMethods = {
 					+ 'html.is-flow .tp > .tpinner { height: ' + ch + '; display: flex; flex-direction: column; justify-content: center; }'
 					// …AND THE CONTACT LINES BELOW THAT SEAM (A860, the writer: "in expanded view this is too high"): the title
 					// page's top margin is the seam inside it here, so its corner is a margin down, as the pages set it
-					+ 'html.is-flow .tp > .tpcontact { top: ' + pm + '; }'
+					+ 'html.is-flow .tp > .tpcontact { top: ' + mt + '; }'
 					// THE PRINTED DOCUMENT IS NOT THE SCREEN ONE: a drop shadow is a
 					// compositing effect, and asked to print one Chromium rasterises the
 					// page it cannot describe in vector terms — a PDF that is a picture of
@@ -4936,7 +4941,7 @@ export const exportMethods = {
 
 	exportPdfOptions(this: WordSmith, o: WsExportRun) {
 		const paper = wsPaperOf(o);
-		const m = wsPaperMicrons(paper);
+		const m = wsPaperMicrons(paper, wsMarginsOf(o));
 		// ── NO HEADER OF OURS. THE DOCUMENT ALREADY HAS ONE ─────────────────
 		//
 		// Chromium honours the HTML's own `@page { @top-right { … } }` rule. One
@@ -4953,8 +4958,7 @@ export const exportMethods = {
 			// pipeline that sets the page up before the CSS has every reason to refuse. Obsidian ships Electron 43.
 			pageSize: { width: m.width / 25400, height: m.height / 25400 },
 			// …and INCHES, in the same object.
-			margins: { top: m.margin, bottom: m.margin,
-				left: m.margin, right: m.margin },
+			margins: m.margins,
 			// …AND THE DOCUMENT'S OWN @page WINS OVER BOTH.
 			//
 			// The HTML this prints already carries `@page { size: …; margin: …; }`

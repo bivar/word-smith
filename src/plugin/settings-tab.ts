@@ -86,7 +86,7 @@ import {
 	wsThemeHex,
 	wsPageNumAt,
 	wsIndentSize,
-	wsParaSpacing,
+	wsParaSpacing, wsParseMargins, WS_MARGIN_PRESETS,
 } from '../core/preamble';
 import type WordSmith from './plugin';
 import type { WordSmithSettings, WsExportBoolKey } from '../core/settings';
@@ -2355,6 +2355,7 @@ export class WordSmithSettingTab extends PluginSettingTab {
 			optSettings.push(...WordSmithSettingTab.keysOf(items));
 			return this.section(title, items, slot, false);
 		};
+		const YOUR_MARGINS = 'Top, right, bottom and left, in cm, mm, in or pt: 3cm 2cm 2cm 3cm. One length sets every side, two the top and bottom then the sides. Margins that leave less than an inch of text use the paper\u2019s own.';
 		const NUM_AT: [string, string][] = [['top-left', 'Top left'], ['top-center', 'Top center'], ['top-right', 'Top right'],
 			['bottom-left', 'Bottom left'], ['bottom-center', 'Bottom center'], ['bottom-right', 'Bottom right'], ['none', 'None']];
 		// TWO PILLS (A634, the writer: "the citations needs to be in a pill in the export page. so two
@@ -2397,7 +2398,7 @@ export class WordSmithSettingTab extends PluginSettingTab {
 			// THE PAGES, THE HEADINGS AND THE PARAGRAPHS, DECIDED ONCE (the writer: "think of what options hould we put in the
 			// export page settings as they are too many options in the export tab", their pick "Six plus paragraph look"):
 			// moved out of the Export tab, which says where they went
-			ex('Pages', ['headerText', 'headerLeft', 'pageNumberAt', 'tocTitle'], [
+			ex('Pages', ['headerText', 'headerLeft', 'pageNumberAt', 'tocTitle', 'margins', 'marginsCustom'], [
 				{ name: 'Header text', desc: 'Along the top of every page. Empty, your surname and the title.',
 					render: words('headerText', () => (opts().author ? String(opts().author).split(/\s+/).pop() + ' / ' : '') + (String(opts().titleText || '').trim() || wsT('Title')) + ' /') },
 				// THE TOKENS (#81, the writer: "will be making this with tokens"), and THE SIDE ("a toggle for the header left or right")
@@ -2415,6 +2416,35 @@ export class WordSmithSettingTab extends PluginSettingTab {
 						});
 					} },
 				{ name: 'Contents title', desc: 'Over the list of files at the front.', render: words('tocTitle', () => wsT('Contents')) },
+				// THE MARGINS (B11): the paper's own, as a manuscript has them, or what a style or a university asks for
+				{ name: 'Margins', desc: 'The white space around the text, in the Word file, the PDF and the preview. The paper\u2019s own is an inch on Letter and A4, less on a small trim.',
+					render: (st) => {
+						st.addDropdown((d) => {
+							for (const [v, l] of [['paper', 'The paper\u2019s own'], ['1in', '1 inch all round (APA, MLA, Chicago)'], ['2.5cm', '2.5 cm all round'],
+								['abnt', '3 cm top and left, 2 cm bottom and right (ABNT)'], ['custom', 'Your own']]) d.addOption(v, wsT(l));
+							const now = String(opts().margins || '');
+							d.setValue(['1in', '2.5cm', 'abnt', 'custom'].includes(now) ? now : 'paper').onChange((v) => { void (async () => {
+								opts().margins = v === 'paper' ? '' : v;
+								await plugin.saveSettings();
+								plugin.exportOptsChanged();
+								// (Your margins, under it, follows it at once)
+								this.refreshDomState();
+							})(); });
+						});
+					} },
+				{ name: 'Your margins', desc: YOUR_MARGINS,
+					visible: () => opts().margins === 'custom',
+					render: (st) => {
+						// a box that is not lengths says so, under the row, until it is
+						const say = (v: string) => st.setDesc(wsT(YOUR_MARGINS) + (v.trim() && !wsParseMargins(v) ? ' ' + wsT('Not lengths yet, so the paper\u2019s own margins are used.') : ''));
+						st.addText((t) => t.setPlaceholder(WS_MARGIN_PRESETS.abnt).setValue(String(opts().marginsCustom || '')).onChange((v) => { void (async () => {
+							opts().marginsCustom = v;
+							say(v);
+							await plugin.saveSettings();
+							plugin.exportOptsChanged();
+						})(); }));
+						say(String(opts().marginsCustom || ''));
+					} },
 			], this.railed('export', 'options')),
 			ex('Headings', ['centerHeads', 'dashPageBreak'], [
 				// ("in exports": Text › Layout has a Center headings of its own, for the editor; one name a row, as Curly quotes in exports)
