@@ -56,6 +56,8 @@ export const WS_CITE_STYLES: { id: string; name: string; heading: string }[] = [
 	{ id: 'harvard', name: 'Harvard', heading: 'Reference list' },
 	{ id: 'mla', name: 'MLA 9', heading: 'Works Cited' },
 	{ id: 'ieee', name: 'IEEE', heading: 'References' },
+	// ABNT, as Brazilian universities ask for it: NBR 10520:2023 in the text, NBR 6023:2018 in the list
+	{ id: 'abnt', name: 'ABNT (NBR 6023, NBR 10520)', heading: 'REFERÊNCIAS' },
 	{ id: 'custom', name: 'Custom (tokens)', heading: 'References' },
 ];
 export const WS_CITE_CUSTOM_DEFAULT: WsCiteCustom = {
@@ -72,6 +74,7 @@ export const WS_CITE_PRESET_TOKENS: Record<string, WsCiteCustom> = {
 	harvard: { inText: '{etal}, {year}[, {locator}]', around: 'parens', entry: '{authors-harvard} ({year}) {title*}.[ {place}:][ {publisher}.]' },
 	mla: { inText: '{etal}[ {page}]', around: 'parens', entry: '{authors-full}. {title*}.[ {publisher},] {year}.' },
 	ieee: { inText: '{n}[, {locator}]', around: 'brackets', entry: '\\[{n}\\] {authors-initials}, {title*}.[ {place}:][ {publisher},] {year}.' },
+	abnt: { inText: '{etal-abnt}, {year}[, {locator}]', around: 'parens', entry: '{authors-abnt}. {title**}.[ {edition}.][ {place}:][ {publisher},] {year}.' },
 };
 // the tokens a custom style is written in, with what each draws: the settings' help and preview read this
 export const WS_CITE_TOKENS: [string, string][] = [
@@ -108,6 +111,10 @@ export const WS_CITE_TOKENS: [string, string][] = [
 	['{locator}', 'the page with its word: p. 12, pp. 3–5, chap. 2'],
 	// #60's rest: Harvard's names
 	['{authors-harvard}', 'Smith, J. and Lee, M., as Harvard lists them'],
+	// ABNT's names, and its bold title
+	['{etal-abnt}', 'Smith; Lee, or Smith et al. from four, as ABNT cites them'],
+	['{authors-abnt}', 'SMITH, John; LEE, Min, as ABNT lists them'],
+	['{title**}', 'the title in bold, its subtitle not: **Title**: subtitle'],
 ];
 
 // ── BIBTEX ────────────────────────────────────────────────────────────────
@@ -460,6 +467,12 @@ export function wsCiteTermsFor(lang: string, props?: Record<string, string> | nu
 }
 // THE TERMS IN FORCE: set by the citer around every answer (all synchronous), English otherwise
 let T: WsCiteTerms = WS_CITE_TERMS_EN;
+// THE TERMS A STYLE WRITES IN: the book's, but IEEE's English and ABNT's Brazilian Portuguese (a pt-BR book's own,
+// with its pack's lines, else the built-in ones)
+function wsStyleTerms(style: string, terms?: WsCiteTerms | null): WsCiteTerms {
+	if (style === 'abnt') return terms && terms.code === 'pt-BR' ? terms : wsCiteTermsFor('pt-BR');
+	return style === 'ieee' || !terms ? WS_CITE_TERMS_EN : terms;
+}
 // a function run under a language's terms, the ones before put back after (B6: the citer, and the hover's entry)
 function wsWithTerms<R>(terms: WsCiteTerms, fn: () => R): R { const was = T; T = terms; try { return fn(); } finally { T = was; } }
 const lc = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
@@ -596,6 +609,7 @@ function inTextOf(style: string, r: WsRef, it: WsCiteItem, n: number, narrative:
 		return (it.suppress ? '' : who) + (at ? (it.suppress ? '' : isPage(loc) ? ' ' : ', ') + at : '');
 	}
 	if (style === 'ieee') return String(n) + (loc.value ? ', ' + pageWord(loc) : '');
+	if (style === 'abnt') return abntInText(r, it, narrative, false);
 	return '';
 }
 
@@ -651,6 +665,7 @@ function entryOf(style: string, r: WsRef, n: number): string {
 		return [(who ? who + ' ' : '') + italEnd(r.title), bibAfterTitle(r), end([pub, r.year].filter(Boolean).join(', ')), origOf(r) ? end(T.firstPublished + ' ' + origOf(r)) : ''].filter(Boolean).join(' ');
 	}
 	if (style === 'harvard') return harvardEntry(r);
+	if (style === 'abnt') return abntEntry(r);
 	if (style === 'mla') {
 		const who = a.length > 2 ? inverted(a[0]) + ', et al.' : end(listInverted(a));
 		const head = who ? (who.endsWith('.') ? who : who + '.') + ' ' : '';
@@ -674,6 +689,88 @@ function entryOf(style: string, r: WsRef, n: number): string {
 		return [head + ital(r.title) + '.', end([[r.place, r.publisher].filter(Boolean).join(': '), r.year].filter(Boolean).join(', '))].filter(Boolean).join(' ');
 	}
 	return r.title;
+}
+
+// ── ABNT ──────────────────────────────────────────────────────────────────
+//
+// IN THE TEXT, NBR 10520:2023: (Silva, 2020, p. 12), the names in upper and lower case (the 2002 edition's capitals in
+// the parentheses, SILVA, a switch); two or three authors with semicolons, (Silva; Souza, 2020), and "e" in a sentence,
+// Silva e Souza (2020); four or more, Silva et al.; a page always "p.", a range with a hyphen (p. 12-15). IN THE LIST,
+// NBR 6023:2018: SILVA, Maria; SOUZA, João. **Title**: subtitle. 2. ed. Place: Publisher, 2020. Its words are
+// Brazilian Portuguese whatever the book's language (the citer's terms): ABNT is Brazil's standard
+const ABNT_MONTHS = ['jan.', 'fev.', 'mar.', 'abr.', 'maio', 'jun.', 'jul.', 'ago.', 'set.', 'out.', 'nov.', 'dez.'];
+const up = (x: string) => x.toLocaleUpperCase('pt-BR');
+// a day as ABNT writes it: 13 out. 2026
+const abntDay = (d: string) => {
+	const m = /^(\d{4})(?:-(\d{2}))?(?:-(\d{2}))?$/.exec(String(d || ''));
+	if (!m) return String(d || '');
+	return [m[3] ? String(Number(m[3])) : '', m[2] ? ABNT_MONTHS[Number(m[2]) - 1] || '' : '', m[1]].filter(Boolean).join(' ');
+};
+const abntNd = '[s. d.]';
+const hyphen = (x: string) => x.replace(/\s*\u2013\s*/g, '-');
+// a locator: a page or pages always p., the rest with its word in Portuguese (cap. 3, v. 2)
+function abntLoc(locator: string): string {
+	const l = wsLocator(locator);
+	if (!l.value) return '';
+	if (isPage(l)) return 'p. ' + hyphen(l.value);
+	return l.label === 'other' ? l.value : locWord(l.label) + ' ' + hyphen(l.value);
+}
+/** one source in the text: its names (`upper`, the 2002 capitals in the parentheses), its year and its page */
+function abntInText(r: WsRef, it: WsCiteItem, narrative: boolean, upper: boolean): string {
+	const a = (r.authors.length ? r.authors : r.editors).map(fam);
+	// no name: the title's first word, and [...] for the rest of it
+	const who = !a.length ? (r.title.split(/\s+/)[0] || '') + (/\s/.test(r.title.trim()) ? ' [...]' : '')
+		: a.length > 3 ? (upper && !narrative ? up(a[0]) : a[0]) + ' et al.'
+			: narrative ? join(a, T.and, false) : a.map((x) => (upper ? up(x) : x)).join('; ');
+	const tail = [r.year || abntNd, abntLoc(it.locator)].filter(Boolean).join(', ');
+	if (narrative) return who + ' (' + tail + ')';
+	return [it.suppress ? '' : who, tail].filter(Boolean).join(', ');
+}
+// the list's names: SILVA, Maria; SOUZA, João; four or more, the first and et al.; editors with (org.)
+const abntName = (n: WsName) => (n.given ? up(n.family) + ', ' + n.given : up(n.family));
+const abntNames = (a: WsName[]) => (a.length > 3 ? abntName(a[0]) + ' et al.' : a.map(abntName).join('; '));
+// the title in bold, its subtitle after the colon not: **Metodologia**: um guia
+const abntTitle = (t: string) => {
+	const m = /^([\s\S]*?):\s+([\s\S]+)$/.exec(t);
+	return m ? '**' + m[1] + '**: ' + m[2] : t ? '**' + t + '**' : '';
+};
+const abntEdition = (e: string) => (!e ? '' : /^\d+$/.test(e) ? e + '. ed.' : end(e));
+// where, by whom, when: [S. l.] and [s. n.] where the library does not say
+function abntImprint(r: WsRef): string {
+	const where = !r.place && !r.publisher ? '[S. l.: s. n.]' : (r.place || '[S. l.]') + ': ' + (r.publisher || '[s. n.]');
+	return where + ', ' + (r.year || abntNd);
+}
+// a DOI, an address and the day it was read
+function abntOnline(r: WsRef): string {
+	const doi = r.doi ? r.doi.replace(/^https?:\/\/(dx\.)?doi\.org\//, '') : '';
+	return [doi ? 'DOI: ' + doi + '.' : '', !doi && r.url ? 'Disponível em: ' + r.url + '.' : '', (doi || r.url) && r.accessed ? 'Acesso em: ' + abntDay(r.accessed) + '.' : '']
+		.filter(Boolean).join(' ');
+}
+function abntEntry(r: WsRef): string {
+	const a = r.authors.length ? r.authors : r.editors;
+	const eds = !r.authors.length && r.editors.length;
+	// NOBODY WROTE IT: the entry opens on its title, the first word in capitals, nothing in bold
+	const head = a.length ? end(abntNames(a) + (eds ? ' (org.)' : '')) : '';
+	const opener = (t: string) => (head ? head + ' ' + abntTitle(t) : up(t.split(/\s+/)[0] || '') + t.slice((t.split(/\s+/)[0] || '').length));
+	const online = abntOnline(r);
+	const pages = r.pages ? 'p. ' + hyphen(r.pages) : '';
+	if (r.type === 'article') {
+		const where = [r.container ? '**' + r.container + '**' : '', r.place, r.volume ? 'v. ' + r.volume : '', r.issue ? 'n. ' + r.issue : '', pages, r.year || abntNd].filter(Boolean).join(', ');
+		return [(head ? head + ' ' : '') + end(head ? r.title : opener(r.title)), end(where), online].filter(Boolean).join(' ');
+	}
+	if (r.type === 'chapter') {
+		const inside = 'In: ' + (r.editors.length ? end(abntNames(r.editors) + ' (org.)') + ' ' : '') + (r.container ? end(abntTitle(r.container)) : '');
+		return [(head ? head + ' ' : '') + end(head ? r.title : opener(r.title)), inside.trim(), end(abntImprint(r)), pages ? end(pages) : '', online].filter(Boolean).join(' ');
+	}
+	if (r.type === 'thesis') {
+		const kind = thesisKind(r, 'abnt') + ' \u2013 ' + [r.publisher, r.place, r.year].filter(Boolean).join(', ');
+		return [end(opener(r.title)), r.year ? end(r.year) : '', end(kind), online].filter(Boolean).join(' ');
+	}
+	if (r.type === 'web') return [end(opener(r.title)), end([r.place, r.year || abntNd].filter(Boolean).join(', ')), online].filter(Boolean).join(' ');
+	// a book, a report, anything else: its translator, edition, imprint, series, the year it first came out
+	const tr = tNames(r);
+	return [end(opener(r.title)), tr.length ? end('Tradução: ' + join(tr, T.and, false)) : '', abntEdition(r.edition), end(abntImprint(r)),
+		r.series ? '(' + r.series + ').' : '', origOf(r) ? end(T.firstPublished + ' ' + origOf(r)) : '', online].filter(Boolean).join(' ');
 }
 
 // HARVARD'S LIST, as Cite Them Right sets it (#60's rest): Woolf, V. (1929) *A Room of One's Own*. London: Hogarth
@@ -788,6 +885,9 @@ function tokenValue(tok: string, r: WsRef, it: WsCiteItem | null, n: number): st
 		case 'authors-apa': return a.length ? end(apaNames(a)) : '';
 		case 'locator': return it ? pageWord(wsLocator(it.locator)) : '';
 		case 'authors-harvard': return a.length ? harvNames(a) : '';
+		case 'etal-abnt': return a.length ? (a.length > 3 ? fam(a[0]) + ' et al.' : a.map(fam).join('; ')) : '';
+		case 'authors-abnt': return a.length ? abntNames(a) : '';
+		case 'title**': return abntTitle(r.title);
 		default: return '{' + tok + '}';
 	}
 }
@@ -831,13 +931,16 @@ export interface WsCiter {
 	heading(): string;
 	/** every citation the book makes, before the first is cited: the sources an author-date style letters (B1) */
 	prepare(cites: WsCite[]): void;
+	/** a list set flush at the margin, single spaced, a blank line between its entries (ABNT), not hanging */
+	flush(): boolean;
 }
 
 export interface WsCiteAt { inNote?: boolean; fresh?: boolean }
 
-export function wsCiter(style: string, lib: Map<string, WsRef>, custom?: WsCiteCustom | null, heading?: string, terms?: WsCiteTerms | null, opts?: { ibid?: boolean } | null): WsCiter {
-	// THE BOOK'S LANGUAGE (A713) for every answer this citer gives; IEEE keeps its English
-	const use = style === 'ieee' || !terms ? WS_CITE_TERMS_EN : terms;
+export function wsCiter(style: string, lib: Map<string, WsRef>, custom?: WsCiteCustom | null, heading?: string, terms?: WsCiteTerms | null, opts?: { ibid?: boolean; abntUpper?: boolean } | null): WsCiter {
+	// THE BOOK'S LANGUAGE (A713) for every answer this citer gives; IEEE keeps its English, ABNT its Portuguese
+	const use = wsStyleTerms(style, terms);
+	const abntUpper = !!(opts && opts.abntUpper);
 	const within = <R>(fn: () => R): R => wsWithTerms(use, fn);
 	const order: string[] = [];
 	const noted = new Set<string>();
@@ -859,7 +962,7 @@ export function wsCiter(style: string, lib: Map<string, WsRef>, custom?: WsCiteC
 	// THE SAME NAMES IN THE SAME YEAR (B1): Smith 2020a and Smith 2020b, in the text and in the list, lettered in their
 	// titles' order among the sources the book cites (`prepare`). An author-date style's alone: a number or a note
 	// tells two sources apart already
-	const dated = style === 'apa' || style === 'chicago-ad' || style === 'harvard' || (style === 'custom' && !numbered);
+	const dated = style === 'apa' || style === 'chicago-ad' || style === 'harvard' || style === 'abnt' || (style === 'custom' && !numbered);
 	const lettered = new Map<string, WsRef>();
 	const ref = (key: string) => lettered.get(key) || lib.get(key);
 	return {
@@ -867,6 +970,7 @@ export function wsCiter(style: string, lib: Map<string, WsRef>, custom?: WsCiteC
 		list() { return within(() => listIn()); },
 		heading() { return heading && heading.trim() ? heading.trim() : def.heading; },
 		prepare(cites: WsCite[]) { within(() => prepareIn(cites)); },
+		flush() { return style === 'abnt'; },
 	};
 	function prepareIn(cites: WsCite[]) {
 		lettered.clear();
@@ -891,7 +995,7 @@ export function wsCiter(style: string, lib: Map<string, WsRef>, custom?: WsCiteC
 			g.sort((a, b) => co.compare(a.title, b.title));
 			// no year is n.d.-a, n.d.-b; a reprint's first year stays its own
 			g.forEach((r, i) => lettered.set(r.key, Object.assign({}, r, {
-				year: (r.year || (style === 'harvard' ? harvNd() : T.nd) + '-') + letter(i),
+				year: (r.year || (style === 'harvard' ? harvNd() : style === 'abnt' ? abntNd : T.nd + '-')) + letter(i),
 				origYear: r.origYear === r.year ? '' : r.origYear,
 			})));
 		}
@@ -923,10 +1027,24 @@ export function wsCiter(style: string, lib: Map<string, WsRef>, custom?: WsCiteC
 				const r0 = c.narrative ? ref(found[0].key) : undefined;
 				return { text, note: true, lead: r0 ? tokenValue('etal', r0, found[0], 0) : undefined };
 			}
-			// SEVERAL SOURCES IN ONE PARENTHESIS, APA's way (B7): in the list's order, (Brown, 2018; Zeta, 2019), unless a
-			// "see" or the like before one makes the order the writer's
-			const co = style === 'apa' && !c.narrative && found.length > 1 && found.every((it) => !it.prefix) ? collator() : null;
+			// SEVERAL SOURCES IN ONE PARENTHESIS, APA's and ABNT's way (B7): in the list's order, (Brown, 2018; Zeta, 2019),
+			// unless a "see" or the like before one makes the order the writer's
+			const co = (style === 'apa' || style === 'abnt') && !c.narrative && found.length > 1 && found.every((it) => !it.prefix) ? collator() : null;
 			const inOrder = co ? found.slice().sort((x, y) => { const a = ref(x.key), b = ref(y.key); return a && b ? refCompare(co, a, b) : 0; }) : found;
+			// ABNT: one author's years together, (Silva, 2018, 2020), where neither has a page; the 2002 capitals a switch
+			if (style === 'abnt' && !c.narrative) {
+				const out: { names: string; text: string; bare: boolean }[] = [];
+				for (const it of inOrder) {
+					const r = ref(it.key);
+					if (!r) continue;
+					num(it.key);
+					const bare = !it.prefix && !it.locator && !it.suppress, names = namesKey(r), last = out[out.length - 1];
+					if (bare && last && last.bare && last.names === names) { last.text += ', ' + (r.year || abntNd); continue; }
+					out.push({ names, bare, text: (it.prefix ? it.prefix + ' ' : '') + abntInText(r, it, false, abntUpper) });
+				}
+				if (out.every((p) => !p.text.trim())) return { text: '', note: false };
+				return { text: wrap(out.map((p) => p.text).join('; ')), note: false };
+			}
 			const pieces = inOrder.map((it) => {
 				const r = ref(it.key);
 				if (!r) return '';
@@ -1087,14 +1205,14 @@ export function wsCiteSections(sections: WsExportSection[], citer: WsCiter): boo
 		sec.markdown = out + src.slice(at) + (defs.length ? '\n\n' + defs.join('\n\n') + '\n' : '');
 	}
 	const list = citer.list();
-	if (list.length) sections.push({ title: citer.heading(), markdown: list.join('\n\n'), path: '', depth: 0, bib: true, entries: list });
+	if (list.length) sections.push({ title: citer.heading(), markdown: list.join('\n\n'), path: '', depth: 0, bib: true, entries: list, flush: citer.flush() });
 	return any;
 }
 
 /** One source as the style lists it, as plain text: what a citation's hover shows while writing, in the book's
  * language as the export writes it (B6; IEEE keeps its English). */
 export function wsCiteEntryText(style: string, r: WsRef, custom?: WsCiteCustom | null, terms?: WsCiteTerms | null): string {
-	const use = style === 'ieee' || !terms ? WS_CITE_TERMS_EN : terms;
+	const use = wsStyleTerms(style, terms);
 	const md = wsWithTerms(use, () => (style === 'custom' ? wsCiteTemplate((custom || WS_CITE_CUSTOM_DEFAULT).entry, r, null, 0) : entryOf(style, r, 1)));
 	return md.replace(/^\[\d+\]\s*/, '').replace(/\*/g, '');
 }

@@ -612,13 +612,15 @@ export function wsFootnoteDefs(md: string | null | undefined) {
 }
 
 // One paragraph of OOXML. `style` names a style defined in styles.xml.
-export function wsPara(runs: WsRun[], style: string, opts?: { noIndent?: boolean; align?: string; pageBreakBefore?: boolean; hanging?: boolean; bodyLevel?: boolean; noSpace?: boolean }) {
+export function wsPara(runs: WsRun[], style: string, opts?: { noIndent?: boolean; align?: string; pageBreakBefore?: boolean; hanging?: boolean; bodyLevel?: boolean; noSpace?: boolean; single?: boolean }) {
 	const o = opts || {};
 	const pr = [];
 	if (style) pr.push('<w:pStyle w:val="' + style + '"/>');
 	if (o.pageBreakBefore) pr.push('<w:pageBreakBefore/>');
 	// no space before or after (a kept blank line, A851: one line, whatever the body's spacing)
 	if (o.noSpace) pr.push('<w:spacing w:before="0" w:after="0"/>');
+	// single spaced, a single line's space after (a list of sources as ABNT sets it)
+	else if (o.single) pr.push('<w:spacing w:before="0" w:after="240" w:line="240" w:lineRule="auto"/>');
 	if (o.align) pr.push('<w:jc w:val="' + o.align + '"/>');
 	// a hanging paragraph (the list of sources, A572 step 4): half an inch in, its first line out
 	if (o.hanging) pr.push('<w:ind w:left="720" w:hanging="720"/>');
@@ -1830,7 +1832,8 @@ export function wsBuildDocx(sections: WsExportSection[], opt: WsExportRun | null
 		if (o.toc) body.push('<w:bookmarkStart w:id="' + (bibAt + 100) + '" w:name="' + wsAnchorId(b.title, bibAt) + '"/>');
 		body.push(wsPara([{ text: b.title, bold: true }], 'WsHeading' + wsFileHeadLevel(o, b), { noIndent: true, pageBreakBefore: true }));
 		if (o.toc) body.push('<w:bookmarkEnd w:id="' + (bibAt + 100) + '"/>');
-		for (const e of b.entries || []) body.push(wsPara(wsInlineRuns(e, o), 'WsBody', { hanging: true }));
+		// (ABNT's: at the margin, single spaced, a single line's space after each, `flush`)
+		for (const e of b.entries || []) body.push(wsPara(wsInlineRuns(e, o), 'WsBody', b.flush ? { noIndent: true, single: true } : { hanging: true }));
 	}
 
 

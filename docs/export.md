@@ -53,7 +53,7 @@ Word, web page, e-book and Markdown work on phones too. For a PDF on a phone, ex
 
 ## Citations
 
-Write Pandoc's citations in your notes, `[@woolf1929, p. 12]` or a narrative `@woolf1929`, and the export turns them into the style you pick under Settings → Word-Smith → Export → **Citations** (Markdown keeps them as you wrote them, for Pandoc): APA, Chicago (author-date or notes), Harvard, MLA, IEEE, or your own, built from tokens. Press **Customize** beside a style (all but Chicago notes) to start your own from it. Point it at your library, a BibTeX (`.bib`) or CSL-JSON file from Zotero, and the list of sources lands at the end.
+Write Pandoc's citations in your notes, `[@woolf1929, p. 12]` or a narrative `@woolf1929`, and the export turns them into the style you pick under Settings → Word-Smith → Export → **Citations** (Markdown keeps them as you wrote them, for Pandoc): APA, Chicago (author-date or notes), Harvard, MLA, IEEE, ABNT, or your own, built from tokens. Press **Customize** beside a style (all but Chicago notes) to start your own from it. Point it at your library, a BibTeX (`.bib`) or CSL-JSON file from Zotero, and the list of sources lands at the end.
 
 Keys can use any alphabet (`@Søhr_1938`). A key with other punctuation in it, or one ending in a full stop, goes in braces: `[@{Räikkönen_1935.498–506}]`. Type `[@` to search your library; a key that needs braces gets them.
 
@@ -64,6 +64,8 @@ Two works by the same authors in the same year are told apart with a letter, in 
 A locator says what it points at in your words or the style's: `p. 12` or a bare `12` is a page, `12-15` pages (pp. 12–15 in APA), `chapter 3` or `cap. 3` a chapter (chap. 3, or cap. 3 in a Portuguese book), and `sec.`, `vol.`, `fig.`, `line`, `para.`, `n.` and `fol.` likewise. A word it doesn't know (`art. 5`) prints as you wrote it.
 
 A thesis is listed as one: *Title* [Doctoral dissertation, University] in APA, PhD diss. in Chicago, Tese (Doutorado) in a Portuguese book. Its kind comes from the library when it names one (BibLaTeX's `type`, CSL's `genre`), else from `@phdthesis` or `@mastersthesis`. A CSL-JSON file from Zotero's own export is read by each item's citation key, not its Zotero address.
+
+ABNT follows NBR 10520:2023 in the text and NBR 6023:2018 in the list, in Brazilian Portuguese whatever the book's language: (Silva, 2020, p. 12-15), (Marconi; Lakatos, 2020) and Marconi e Lakatos (2020) in a sentence, Silva et al. from four authors, one author's years together, (Gil, 2017, 2019), and several sources in alphabetical order. **Surnames in capitals** gives the 2002 edition's (SILVA, 2020), which many universities still ask for. The list, under REFERÊNCIAS, is set at the margin, single spaced, a blank line between entries: SILVA, Maria. **Título**: subtítulo. 2. ed. Recife: Editora, 2020. Where the library has no place, publisher or year it says [S. l.], [s. n.] or [s. d.]; a thesis reads Tese (Doutorado) – Universidade, Cidade, ano.
 
 Harvard follows Cite Them Right: (Woolf, 1929, p. 108) in the text, Woolf, V. (1929) in the list. In Chicago notes, turn on **Ibid.** and a note citing the same source as the one before it says Ibid. (Ebd. in German, Там же in Russian). An export tells you which cited sources have no year or title.
 
