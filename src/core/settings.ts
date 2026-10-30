@@ -144,7 +144,9 @@ export interface WsExportSection { title: string; markdown: string; path: string
 	/** its folders under the export's root, a folder's own chain, a file's folder's: whether they print or not (#79's numbers) */
 	dirs?: string[];
 	/** the list of sources at the back (A572 step 4): its heading the title, one entry a source */
-	bib?: boolean; entries?: string[] }
+	bib?: boolean; entries?: string[];
+	/** the list set flush at the margin, single spaced, a blank line between entries, as ABNT sets it, not hanging */
+	flush?: boolean }
 export type WsExportBoolKey = KeysOf<WsExportOpts, boolean>;
 export type WsExportStringKey = KeysOf<WsExportOpts, string>;
 

@@ -82,4 +82,51 @@ is('harvard: a doctoral thesis', entry('harvard', 'silva'), 'Silva, M. (2021) *U
 is('mla: a doctoral thesis', entry('mla', 'silva'), 'Silva, Maria. *Uma tese*. 2021. UFPE, PhD dissertation.');
 is('chicago-notes: a thesis note', /Maria Silva, “Uma tese” \(PhD diss\., UFPE, 2021\), 4\./.test(book('chicago-notes', 'As she says [@silva, 4].').text), true);
 
+// ABNT: NBR 10520:2023 in the text, NBR 6023:2018 in the list, in Brazilian Portuguese whatever the book's language
+const abnt = wsParseBibtex(String.raw`
+@book{gil, author={Gil, Antonio Carlos}, title={Como elaborar projetos de pesquisa}, year={2017}, edition={6}, publisher={Atlas}, address={S{\~a}o Paulo}}
+@book{gil2, author={Gil, Antonio Carlos}, title={M{\'e}todos e t{\'e}cnicas de pesquisa social}, year={2019}, edition={7}, publisher={Atlas}, address={S{\~a}o Paulo}}
+@article{ml, author={Marconi, Marina de Andrade and Lakatos, Eva Maria}, title={Fundamentos de metodologia}, journal={Revista X}, volume={12}, number={3}, pages={10--25}, year={2020}, doi={10.1590/abc.123}}
+@incollection{cap, author={Souza, Jo{\~a}o}, title={Um cap{\'i}tulo}, booktitle={Livro organizado: estudos}, editor={Lima, Ana}, publisher={Vozes}, address={Petr{\'o}polis}, year={2018}, pages={33--50}}
+@phdthesis{tese, author={Silva, Maria}, title={{\'E}tica em IA: um estudo}, school={UFPE}, address={Recife}, year={2021}}
+@online{web, author={{Brasil}}, title={Lei Geral de Prote{\c c}{\~a}o de Dados}, url={https://www.gov.br/lgpd}, urldate={2026-10-13}, year={2018}}
+@book{four, author={A, Ana and B, Bia and C, Caio and D, Davi}, title={Quatro}, year={2022}, publisher={Ed}}
+@book{bare, author={Costa, Rui}, title={Sem editora}}
+@book{anon, title={Manual de normaliza{\c c}{\~a}o}, year={2020}, publisher={UFPE}, address={Recife}}`);
+const abntBook = (text, lang, upper) => {
+	const sections = [{ title: 'One', markdown: text, path: 'one.md', depth: 1 }];
+	wsCiteSections(sections, wsCiter('abnt', abnt, null, '', wsCiteTermsFor(lang || 'pt-BR'), { abntUpper: !!upper }));
+	return { text: sections[0].markdown, list: (sections[1] && sections[1].entries) || [], head: sections[1] && sections[1].title, flush: sections[1] && sections[1].flush };
+};
+is('abnt: a page, its range with a hyphen', abntBook('[@gil, p. 12-15]').text, '(Gil, 2017, p. 12-15)');
+is('abnt: in a sentence', abntBook('@gil says').text, 'Gil (2017) says');
+is('abnt: two authors, a semicolon', abntBook('[@ml]').text, '(Marconi; Lakatos, 2020)');
+is('abnt: two authors in a sentence, "e"', abntBook('@ml').text, 'Marconi e Lakatos (2020)');
+is('abnt: four, et al.', abntBook('[@four]').text, '(A et al., 2022)');
+is('abnt: alphabetical, one author\'s years together', abntBook('[@ml; @gil2; @gil]').text, '(Gil, 2017, 2019; Marconi; Lakatos, 2020)');
+is('abnt: a chapter in Portuguese, in an English book', abntBook('[@gil, chapter 3]', 'en').text, '(Gil, 2017, cap. 3)');
+is('abnt: no year', abntBook('[@bare]').text, '(Costa, [s. d.])');
+is('abnt: no author, the title\'s first word', abntBook('[@anon]').text, '(Manual [...], 2020)');
+is('abnt: 2002\'s capitals, a switch', abntBook('[@ml] and @ml', 'pt-BR', true).text, '(MARCONI; LAKATOS, 2020) and Marconi e Lakatos (2020)');
+const all = abntBook('[@gil] [@ml] [@cap] [@tese] [@web] [@four] [@bare] [@anon]');
+is('abnt: the list\'s heading', all.head, 'REFERÊNCIAS');
+is('abnt: the list at the margin', all.flush, true);
+const entryOfKey = (k) => all.list.find((e) => e.indexOf(k) === 0) || '';
+is('abnt: a book', entryOfKey('GIL'), 'GIL, Antonio Carlos. **Como elaborar projetos de pesquisa**. 6. ed. São Paulo: Atlas, 2017.');
+is('abnt: an article', entryOfKey('MARCONI'), 'MARCONI, Marina de Andrade; LAKATOS, Eva Maria. Fundamentos de metodologia. **Revista X**, v. 12, n. 3, p. 10-25, 2020. DOI: 10.1590/abc.123.');
+is('abnt: a chapter', entryOfKey('SOUZA'), 'SOUZA, João. Um capítulo. In: LIMA, Ana (org.). **Livro organizado**: estudos. Petrópolis: Vozes, 2018. p. 33-50.');
+is('abnt: a thesis', entryOfKey('SILVA'), 'SILVA, Maria. **Ética em IA**: um estudo. 2021. Tese (Doutorado) – UFPE, Recife, 2021.');
+is('abnt: a web page', entryOfKey('BRASIL'), 'BRASIL. **Lei Geral de Proteção de Dados**. 2018. Disponível em: https://www.gov.br/lgpd. Acesso em: 13 out. 2026.');
+is('abnt: four authors', entryOfKey('A,'), 'A, Ana et al. **Quatro**. [S. l.]: Ed, 2022.');
+is('abnt: no place, publisher or year', entryOfKey('COSTA'), 'COSTA, Rui. **Sem editora**. [S. l.: s. n.], [s. d.].');
+is('abnt: no author', entryOfKey('MANUAL'), 'MANUAL de normalização. Recife: UFPE, 2020.');
+is('abnt: the hover in Portuguese, in an English book', wsCiteEntryText('abnt', abnt.get('gil'), null, wsCiteTermsFor('en')), 'GIL, Antonio Carlos. Como elaborar projetos de pesquisa. 6. ed. São Paulo: Atlas, 2017.');
+
+// …and the Word file sets ABNT's list at the margin, single spaced, where the others hang
+const { wsBuildDocx } = bundle('src/core/export-page.ts');
+const listed = (flush) => Buffer.from(wsBuildDocx([{ title: 'One', markdown: 'Text.', path: 'one.md', depth: 1 },
+	{ title: 'REFERÊNCIAS', markdown: 'GIL. Livro.', path: '', depth: 0, bib: true, entries: ['GIL. **Livro**.'], flush }], { format: 'docx' })).toString('latin1');
+is('docx: ABNT\'s list single spaced', /<w:spacing w:before="0" w:after="240" w:line="240" w:lineRule="auto"\/><w:ind w:firstLine="0"\/>/.test(listed(true)), true);
+is('docx: another style\'s list hangs', /<w:ind w:left="720" w:hanging="720"\/>/.test(listed(false)), true);
+
 done();

@@ -1928,7 +1928,7 @@ export function wsEpubCss(meta: WsEpubMeta) {
 		+ 'figure.fig img { max-width: 100%; height: auto; } figure.fig figcaption { font-style: italic; font-size: 0.9em; }\n'
 		+ 'mark.hl-red { background: #f8c1c8; } mark.hl-orange { background: #f9d6b2; } mark.hl-green { background: #b5eaca; } mark.hl-blue { background: #b5d3f5; } mark.hl-purple { background: #d6cbfa; }\n'
 		+ 'sup.fnref a { text-decoration: none; } ol.notes li { font-size: 0.92em; margin: 0 0 0.4em; text-indent: 0; }\n'
-		+ 'p.bib { padding-left: 2em; text-indent: -2em; margin: 0 0 0.5em; }\n'
+		+ 'p.bib { padding-left: 2em; text-indent: -2em; margin: 0 0 0.5em; } p.bib.flush { padding-left: 0; text-indent: 0; margin: 0 0 1em; }\n'
 		+ 'ol.toc { list-style: none; padding: 0; } ol.toc li.l1 { margin-left: 1.5em; } ol.toc li.l2 { margin-left: 3em; } ol.toc li.l3 { margin-left: 4.5em; }\n'
 		+ 'nav ol { list-style: none; } nav li { margin: 0.2em 0; }\n';
 }
@@ -4975,6 +4975,8 @@ export const DEFAULT_SETTINGS = {
 	citeMarks:                true,
 	// Ibid. in Chicago's notes (#60's rest): off, as Chicago now prefers the short note
 	citeIbid:                 false,
+	// ABNT's surnames in capitals inside the parentheses, (SILVA, 2020), as NBR 10520:2002 had them: off, as 2023 allows
+	citeAbntUpper:            false,
 	posEnabled:               false,
 	posDimOthers:             true,
 	// The Writing Checks counterpart of posDimOthers. Ships OFF where the

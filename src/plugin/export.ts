@@ -3232,7 +3232,7 @@ export const exportMethods = {
 		if (bibAt >= 0) {
 			const b = sections[bibAt];
 			parts.push('<section class="page bib" id="' + wsAnchorId(b.title, bibAt) + '"><h2>' + esc(b.title) + '</h2>'
-				+ (b.entries || []).map((e) => '<p class="bib">' + wsRunsHtml(e, o) + '</p>').join('') + '</section>');
+				+ (b.entries || []).map((e) => '<p class="bib' + (b.flush ? ' flush' : '') + '">' + wsRunsHtml(e, o) + '</p>').join('') + '</section>');
 		}
 
 		// ONE LINE HEIGHT, read twice: by the body and by the title page's
@@ -3607,6 +3607,8 @@ export const exportMethods = {
 			+ 'p.blank { margin: 0; }'
 			// THE LIST OF SOURCES HANGS (A572 step 4): half an inch, as the .docx does
 			+ 'section.bib p.bib { padding-left: 0.5in; text-indent: -0.5in; margin: 0 0 0.5em; }'
+			// (ABNT's list: at the margin, single spaced, a blank line between)
+			+ 'section.bib p.bib.flush { padding-left: 0; text-indent: 0; line-height: 1.15; margin: 0 0 1.15em; }'
 			// A DARK SHEET, for reading rather than for proofing. It is not
 			// what the file looks like and it does not pretend to be — the
 			// point is the hour spent reading the preview before sending

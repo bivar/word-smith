@@ -2601,7 +2601,7 @@ export const storesMethods = {
 	// the style the settings name, over the library: one book's citations, in order, in the book's language (A713)
 	citer(this: WordSmith): WsCiter {
 		const s = this.settings;
-		return wsCiter(s.citeStyle || 'apa', this.citeLibrary(), { inText: s.citeCustomInText, around: s.citeCustomAround, entry: s.citeCustomEntry }, s.citeHeading, this.citeTerms(), { ibid: !!s.citeIbid });
+		return wsCiter(s.citeStyle || 'apa', this.citeLibrary(), { inText: s.citeCustomInText, around: s.citeCustomAround, entry: s.citeCustomEntry }, s.citeHeading, this.citeTerms(), { ibid: !!s.citeIbid, abntUpper: !!s.citeAbntUpper });
 	},
 	// THE BOOK'S LANGUAGE FOR A CITATION (A713, issue #60): the language Settings → Language names, and its pack's own
 	// `cite-<term>` lines over the built-in words

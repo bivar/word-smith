@@ -1585,5 +1585,7 @@
 	"Your own": "Personalizadas",
 	"Your margins": "Suas margens",
 	"Top, right, bottom and left, in cm, mm, in or pt: 3cm 2cm 2cm 3cm. One length sets every side, two the top and bottom then the sides. Margins that leave less than an inch of text use the paper’s own.": "Superior, direita, inferior e esquerda, em cm, mm, in ou pt: 3cm 2cm 2cm 3cm. Um valor vale para todos os lados; dois, para cima e embaixo e depois para os lados. Margens que deixam menos de uma polegada de texto dão lugar às do papel.",
-	"Not lengths yet, so the paper’s own margins are used.": "Ainda não são medidas, então valem as margens do papel."
+	"Not lengths yet, so the paper’s own margins are used.": "Ainda não são medidas, então valem as margens do papel.",
+	"Surnames in capitals": "Sobrenomes em maiúsculas",
+	"Inside the parentheses, as NBR 10520:2002 had them: (SILVA, 2020). Off, as the 2023 edition allows: (Silva, 2020).": "Dentro dos parênteses, como na NBR 10520:2002: (SILVA, 2020). Desligado, como a edição de 2023 permite: (Silva, 2020)."
 }

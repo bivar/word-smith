@@ -2618,7 +2618,7 @@ export class WordSmithSettingTab extends PluginSettingTab {
 						box.empty();
 						const lib = plugin.citeLibrary();
 						const refs = lib.size ? Array.from(lib.values()).slice(0, 2) : WS_CITE_SAMPLES;
-						const citer = wsCiter(s.citeStyle || 'apa', new Map(refs.map((r) => [r.key, r])), { inText: s.citeCustomInText, around: s.citeCustomAround, entry: s.citeCustomEntry }, s.citeHeading, this.plugin.citeTerms(), { ibid: !!s.citeIbid });
+						const citer = wsCiter(s.citeStyle || 'apa', new Map(refs.map((r) => [r.key, r])), { inText: s.citeCustomInText, around: s.citeCustomAround, entry: s.citeCustomEntry }, s.citeHeading, this.plugin.citeTerms(), { ibid: !!s.citeIbid, abntUpper: !!s.citeAbntUpper });
 						const one = (key: string, locator: string): WsCite => ({ from: 0, to: 0, narrative: false, items: [{ key, locator, prefix: '', suppress: false }] });
 						const said = refs.map((r, k) => citer.cite(one(r.key, k === 0 ? '12' : '')));
 						const prose = box.createDiv({ cls: 'ws-cite-preview-text' });
@@ -2635,6 +2635,8 @@ export class WordSmithSettingTab extends PluginSettingTab {
 				} },
 			// IBID. (#60's rest): Chicago's notes alone, off by default; under the preview, so the style stays right over it (A634)
 			{ name: 'Ibid.', desc: 'A note citing the same source as the note before it says Ibid.', control: { type: 'toggle', key: 'citeIbid' }, visible: () => s.citeStyle === 'chicago-notes' },
+			// ABNT's capitals (NBR 10520:2002), which many universities still ask for; 2023 allows either
+			{ name: 'Surnames in capitals', desc: 'Inside the parentheses, as NBR 10520:2002 had them: (SILVA, 2020). Off, as the 2023 edition allows: (Silva, 2020).', control: { type: 'toggle', key: 'citeAbntUpper' }, visible: () => s.citeStyle === 'abnt' },
 			{ name: 'In the text', desc: 'One source as it reads in the text, in the tokens below; [ ] drops a part whose field is empty.',
 				render: text('citeCustomInText', () => '{etal} {year}[, {page}]'), visible: custom },
 			{ name: 'In the list', desc: 'One source as it reads in the list at the back.',
