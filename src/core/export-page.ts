@@ -4,6 +4,7 @@
 
 import type { WsExportOpts, WsExportRun, WsExportSection, WsExportBuild, WsImage } from './settings';
 import { wsTIn } from './ui-text';
+import { wsMathmlToOmml } from './omml';
 import { wsTagSpans, wsReplaceToLast, wsUtf8, wsZip, wsColumnOf, wsHeadSizeEm, wsTitleWords, wsAnchorId, wsXml, wsHeadNumbers, wsNumbered, wsNoteHeadings, wsFileHeadLevel, wsDeepestLevel, wsTocSteps } from './preamble';
 
 // ── Paper ───────────────────────────────────────────────────────────────────
@@ -237,7 +238,9 @@ export function wsJoinMark(o: WsExportOpts | null | undefined) {
 }
 
 // a run of a paragraph: text and how it is set
-export interface WsRun { text: string; bold?: boolean; ital?: boolean; high?: boolean; hl?: string; sup?: boolean; mono?: boolean; sz?: number; note?: number; noteEnd?: boolean; noteMark?: string }
+export interface WsRun { text: string; bold?: boolean; ital?: boolean; high?: boolean; hl?: string; sup?: boolean; mono?: boolean; sz?: number; note?: number; noteEnd?: boolean; noteMark?: string;
+	/** an inline formula as Word's own math (B10), its `<m:oMath>`; `text` keeps its TeX for a reader that draws none */
+	math?: string }
 // THE TITLE PAGE'S TITLE, one and a half times the body size, bold. A MULTIPLE,
 // as `wsHeadSizeEm` is, so both readers take it from here: the .docx turns it
 // into half-points on the title's run, the page writes it as em. Bigger than
@@ -393,6 +396,20 @@ function wsUnshield(s: string) {
 export function wsInlineRuns(text: string, opts?: (WsExportOpts & WsExportBuild) | null) {
 	const o = opts || {};
 	let t = String(text == null ? '' : text);
+	// INLINE MATH AS WORD'S OWN (B10): each $…$ outside a code span that the build rendered (#102) stands in the text as
+	// a mark no rule below reads, \uE020 its number \uE021, and becomes its formula when the runs are cut. A formula
+	// with no MathML, or none Word's math can say, stays as written
+	const formulas: { tex: string; omml: string }[] = [];
+	const figs = o.figures;
+	if (figs && figs.math.size && t.indexOf('$') !== -1) {
+		t = t.split(/(`[^`]*`)/).map((seg, k) => (k % 2 ? seg : seg.replace(WS_INLINE_MATH, (m: string, before: string, tex: string) => {
+			const mml = figs.math.get('I\n' + tex);
+			const omml = mml ? wsMathmlToOmml(mml, false) : '';
+			if (!omml) return m;
+			formulas.push({ tex, omml });
+			return before + '\uE020' + (formulas.length - 1) + '\uE021';
+		}))).join('');
+	}
 	// CURLY QUOTES AT COMPILE TIME, never in the writer's files. Which way
 	// a quote curls depends on what is beside it: an apostrophe inside a
 	// word is always a right single, an opening quote follows a space or a
@@ -505,9 +522,20 @@ export function wsInlineRuns(text: string, opts?: (WsExportOpts & WsExportBuild)
 	// its number, and the run carries it; one with no definition, or with no
 	// build to number it, stays its label, raised, as a superscript.
 	const out: WsRun[] = [];
-	for (const r of runs) {
+	for (const r0 of runs) {
+		// a formula's mark is its formula, a run of its own
+		if (formulas.length && r0.text.indexOf('\uE020') !== -1) {
+			r0.text.split(/\uE020(\d+)\uE021/).forEach((bit, k) => {
+				if (k % 2) { const f = formulas[Number(bit)]; if (f) out.push({ text: '$' + f.tex + '$', math: f.omml }); }
+				else if (bit) cut(Object.assign({}, r0, { text: bit }));
+			});
+			continue;
+		}
+		cut(r0);
+	}
+	function cut(r: WsRun) {
 		const bits = r.text.split(/\[\^([^[\]]+)\]/);
-		if (bits.length === 1) { out.push(r); continue; }
+		if (bits.length === 1) { out.push(r); return; }
 		for (let k = 0; k < bits.length; k++) {
 			if (!bits[k]) continue;
 			if (k % 2 === 0) { out.push(Object.assign({}, r, { text: bits[k] })); continue; }
@@ -552,6 +580,8 @@ export function wsPara(runs: WsRun[], style: string, opts?: { noIndent?: boolean
 	// a heading's look at the body's outline level (A848): no contents field collects it
 	if (o.bodyLevel) pr.push('<w:outlineLvl w:val="9"/>');
 	const body = (runs.length ? runs : [{ text: '' }]).map((r: WsRun) => {
+		// a formula, Word's own math beside the runs (B10)
+		if (r.math) return r.math;
 		// A NOTE'S REFERENCE in the text, and the note's own mark at its start:
 		// Word numbers both itself, from the id and the place.
 		if (r.note) {
@@ -588,13 +618,14 @@ export function wsPara(runs: WsRun[], style: string, opts?: { noIndent?: boolean
 // THE PAPER'S TEXT WIDTH, ITS COLUMNS EQUAL AND FIXED (the writer: "i think we need to resize tables to fit"): Word wraps a
 // cell's text inside its column, as the preview does. 9,360 twips stood here, Letter's text width, on every paper: an A5
 // table ran past the margin.
-export function wsTable(rows: string[][], o?: WsExportOpts | null) {
+export function wsTable(rows: string[][], o?: (WsExportOpts & WsExportBuild) | null) {
 	const width = Math.max.apply(null, rows.map((r) => r.length));
 	const paper = wsPaperOf(o), textW = Math.max(1440, paper.w - 2 * paper.mar), colW = Math.floor(textW / width);
 	const grid = '<w:tblGrid>' + new Array(width).fill('<w:gridCol w:w="' + colW + '"/>').join('') + '</w:tblGrid>';
 	// (a row never split across two pages, as the preview and the PDF set it: `cantSplit`)
 	const body = rows.map((cells, ri) => '<w:tr><w:trPr><w:cantSplit/></w:trPr>' + new Array(width).fill(0).map((_, ci) => {
-		const runs = wsInlineRuns(cells[ci] == null ? '' : cells[ci]);
+		// a cell's formulas as Word's math too (B10); nothing else of the build's in a cell
+		const runs = wsInlineRuns(cells[ci] == null ? '' : cells[ci], o && o.figures ? { figures: o.figures } : null);
 		if (ri === 0) runs.forEach(r => { r.bold = true; });
 		return '<w:tc><w:tcPr><w:tcW w:w="' + colW + '" w:type="dxa"/></w:tcPr>'
 			+ wsPara(runs, 'WsTableCell') + '</w:tc>';
@@ -1062,10 +1093,14 @@ export function wsBlocksFromMarkdown(md: string | null | undefined, opts: (WsExp
 			continue;
 		}
 
-		// MATH: set apart as written, in monospace, like code (wsMathBlock).
+		// MATH: Word's own equation, centered on its line (B10), where the build rendered it (#102) and Word's math can
+		// say it; else set apart as written, in monospace, like code (wsMathBlock).
 		if (/^\$\$/.test(t)) {
 			const mb = wsMathBlock(lines, i);
 			i = mb.end;
+			const mml = o.figures ? o.figures.math.get('D\n' + mb.text) : undefined;
+			const omml = mml ? wsMathmlToOmml(mml, true) : '';
+			if (omml) { out.push(wsPara([{ text: mb.text, math: omml }], 'WsBody', { noIndent: true, align: 'center' })); continue; }
 			for (const ml of mb.text.split('\n')) out.push(wsPara([{ text: ml, mono: true }], 'WsCode', { noIndent: true }));
 			continue;
 		}
@@ -1775,6 +1810,7 @@ export function wsBuildDocx(sections: WsExportSection[], opt: WsExportRun | null
 		: '') + (wantFooter ? '<w:footerReference w:type="default" r:id="rId7"/>' : '');
 	const doc = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
 		+ '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+		+ ' xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"'
 		+ ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"'
 		+ ' xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">'
 		+ '<w:body>' + body.join('')
@@ -1831,7 +1867,7 @@ export function wsBuildDocx(sections: WsExportSection[], opt: WsExportRun | null
 	// The notes' own part: the two separators Word draws above them, then the notes.
 	const sep = (id: number, el: string) => '<w:' + noteTag + ' w:type="' + el + '" w:id="' + id + '"><w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:' + el + '/></w:r></w:p></w:' + noteTag + '>';
 	const notesPart = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-		+ '<w:' + noteTag + 's xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+		+ '<w:' + noteTag + 's xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
 		+ sep(-1, 'separator') + sep(0, 'continuationSeparator') + noteXml.join('')
 		+ '</w:' + noteTag + 's>';
 

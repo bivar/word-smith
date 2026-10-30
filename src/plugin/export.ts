@@ -2960,8 +2960,9 @@ export const exportMethods = {
 	// Every $$ block and $…$ as MathML: MathJax's own `tex2mml`, after Obsidian's `loadMathJax` (its CHTML needs
 	// Obsidian's fonts; MathML draws in the PDF and in any browser opening the .html or the EPUB, nothing carried). Every
 	// ```mermaid fence as the SVG Obsidian's own Mermaid draws. Each once, kept by its source for the preview's next
-	// draw; one that fails stays as written. The .docx keeps the text.
-	async exportFigures(this: WordSmith, sections: WsExportSection[]): Promise<WsExportFigures> {
+	// draw; one that fails stays as written. The .docx takes the math alone (B10), as Word's own equations made from the
+	// MathML (wsMathmlToOmml); its diagrams stay as written, `mermaid` false.
+	async exportFigures(this: WordSmith, sections: WsExportSection[], mermaid = true): Promise<WsExportFigures> {
 		const figs: WsExportFigures = { math: new Map(), mermaid: new Map() };
 		const want = { display: new Set<string>(), inline: new Set<string>(), mermaid: new Set<string>() };
 		for (const sec of sections) {
@@ -2969,7 +2970,7 @@ export const exportMethods = {
 			const f = wsFigureSources(sec.markdown);
 			for (const x of f.display) want.display.add(x);
 			for (const x of f.inline) want.inline.add(x);
-			for (const x of f.mermaid) want.mermaid.add(x);
+			if (mermaid) for (const x of f.mermaid) want.mermaid.add(x);
 		}
 		if (!want.display.size && !want.inline.size && !want.mermaid.size) return figs;
 		if (!this._exportFigCache || this._exportFigCache.size > 600) this._exportFigCache = new Map();
@@ -2993,8 +2994,8 @@ export const exportMethods = {
 		}
 		if (want.mermaid.size) {
 			type WsMermaid = { render?: (id: string, src: string) => Promise<string | { svg?: string }> };
-			let mermaid: WsMermaid | null = null;
-			try { mermaid = (await loadMermaid()) as WsMermaid; } catch (_) { wsCatch('exportFigures: loadMermaid', _); }
+			let mer: WsMermaid | null = null;
+			try { mer = (await loadMermaid()) as WsMermaid; } catch (_) { wsCatch('exportFigures: loadMermaid', _); }
 			let n = 0;
 			for (const src of want.mermaid) {
 				const key = 'M\n' + src;
@@ -3002,8 +3003,8 @@ export const exportMethods = {
 				if (svg === undefined) {
 					svg = '';
 					try {
-						if (mermaid && typeof mermaid.render === 'function') {
-							const r = await mermaid.render('ws-mermaid-' + Date.now().toString(36) + '-' + (n++), src);
+						if (mer && typeof mer.render === 'function') {
+							const r = await mer.render('ws-mermaid-' + Date.now().toString(36) + '-' + (n++), src);
 							svg = typeof r === 'string' ? r : String((r && r.svg) || '');
 						}
 					} catch { svg = ''; }
@@ -4393,7 +4394,9 @@ export const exportMethods = {
 				let figures: WsExportFigures | null = null, userCss = '';
 				try {
 					secs = await this.exportSections(picked, o, null, scope0); await this.exportImages(secs, 'preview');
-					if (o.format !== 'md' && o.format !== 'docx') { figures = await this.exportFigures(secs); userCss = await this.exportUserCss(o); }
+					// (the Word file's math too, B10: the preview shows the equations Word will; its snippets and diagrams, no)
+					if (o.format === 'docx') figures = await this.exportFigures(secs, false);
+					else if (o.format !== 'md') { figures = await this.exportFigures(secs); userCss = await this.exportUserCss(o); }
 				}
 				catch { return; }
 				// A SLOWER RUN MUST NOT LAND ON A NEWER ONE. Two changes inside
@@ -4822,7 +4825,7 @@ export const exportMethods = {
 			if (kind !== 'docx') {
 				opt.figures = await this.exportFigures(sections);
 				opt.userCss = await this.exportUserCss(opt);
-			}
+			} else opt.figures = await this.exportFigures(sections, false);
 		}
 		try {
 			if (kind === 'md') {

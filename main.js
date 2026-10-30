@@ -76,12 +76,12 @@ function wsUiPick(code) {
   return /^zh$/i.test(base) ? "" : WS_LOCALES[base] ? base : "";
 }
 function wsUiSet(lang) {
-  const table = lang ? WS_LOCALES[lang] : null;
+  const table2 = lang ? WS_LOCALES[lang] : null;
   const under = lang === "pt-BR" ? WS_LOCALES.pt : null;
   WS_UI = null;
-  if (table || under) {
+  if (table2 || under) {
     WS_UI = /* @__PURE__ */ new Map();
-    for (const t of [under, table])
+    for (const t of [under, table2])
       if (t)
         for (const k of Object.keys(t)) {
           const v = t[k];
@@ -2496,9 +2496,9 @@ function scanNonProseLines(lines) {
         inFront = false;
       continue;
     }
-    const fence = text.match(/^\s{0,3}(`{3,}|~{3,})/);
-    if (fence) {
-      const ch = fence[1].charAt(0);
+    const fence2 = text.match(/^\s{0,3}(`{3,}|~{3,})/);
+    if (fence2) {
+      const ch = fence2[1].charAt(0);
       if (!inFence) {
         inFence = true;
         fenceChar = ch;
@@ -2616,6 +2616,354 @@ function maskMarkup(text) {
   out = out.replace(/^\s{0,3}#{1,6}\s/, blank);
   out = out.replace(/\{\{(?:[^{}]|\{(?!\{))*\}\}/g, blank);
   return wsMaskCitations(out);
+}
+var WS_MML_ENT = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
+var unent = (s) => s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e) => {
+  if (e.charAt(0) !== "#")
+    return WS_MML_ENT[e.toLowerCase()] != null ? WS_MML_ENT[e.toLowerCase()] : m;
+  const n = /^#x/i.test(e) ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+  try {
+    return String.fromCodePoint(n);
+  } catch {
+    return m;
+  }
+});
+var local = (name) => name.slice(name.indexOf(":") + 1).toLowerCase();
+function wsParseMathml(src) {
+  const root = { tag: "#root", attrs: {}, kids: [], text: "" };
+  const stack = [root];
+  const re = /<!--[\s\S]*?-->|<\?[\s\S]*?\?>|<!\[CDATA\[([\s\S]*?)\]\]>|<(\/?)([A-Za-z][\w:.-]*)((?:\s+[\w:.-]+\s*=\s*(?:"[^"]*"|'[^']*'))*)\s*(\/?)>|([^<]+)/g;
+  let m;
+  while (m = re.exec(String(src || ""))) {
+    const top = stack[stack.length - 1];
+    if (m[1] != null) {
+      top.text += m[1];
+      continue;
+    }
+    if (m[3]) {
+      const tag = local(m[3]);
+      if (m[2]) {
+        for (let k = stack.length - 1; k > 0; k--)
+          if (stack[k].tag === tag) {
+            stack.length = k;
+            break;
+          }
+        continue;
+      }
+      const attrs = {};
+      const ar = /([\w:.-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+      let a;
+      while (a = ar.exec(m[4] || ""))
+        attrs[local(a[1])] = unent(a[2] != null ? a[2] : a[3] || "");
+      const node = { tag, attrs, kids: [], text: "" };
+      top.kids.push(node);
+      if (!m[5])
+        stack.push(node);
+      continue;
+    }
+    if (m[6] != null)
+      top.text += unent(m[6]);
+  }
+  const find = (n) => {
+    if (n.tag === "math")
+      return n;
+    for (const k of n.kids) {
+      const f = find(k);
+      if (f)
+        return f;
+    }
+    return null;
+  };
+  return find(root);
+}
+var xml = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+var tokenText = (n) => n.text.replace(/^[ \t\r\n]+|[ \t\r\n]+$/g, "").replace(/[\u2061-\u2064]/g, "");
+var CAMBRIA = '<w:rPr><w:rFonts w:ascii="Cambria Math" w:hAnsi="Cambria Math"/></w:rPr>';
+var VARIANT = {
+  normal: ["", "p"],
+  bold: ["", "b"],
+  italic: ["", "i"],
+  "bold-italic": ["", "bi"],
+  "double-struck": ["double-struck", "p"],
+  script: ["script", "p"],
+  "bold-script": ["script", "b"],
+  fraktur: ["fraktur", "p"],
+  "bold-fraktur": ["fraktur", "b"],
+  "sans-serif": ["sans-serif", "p"],
+  "bold-sans-serif": ["sans-serif", "b"],
+  "sans-serif-italic": ["sans-serif", "i"],
+  "sans-serif-bold-italic": ["sans-serif", "bi"],
+  monospace: ["monospace", "p"]
+};
+var BB_OLD = { C: 8450, H: 8461, N: 8469, P: 8473, Q: 8474, R: 8477, Z: 8484 };
+var doubleStruck = (t) => Array.from(t).map((c) => {
+  if (BB_OLD[c])
+    return String.fromCodePoint(BB_OLD[c]);
+  if (/[A-Z]/.test(c))
+    return String.fromCodePoint(120120 + c.charCodeAt(0) - 65);
+  if (/[a-z]/.test(c))
+    return String.fromCodePoint(120146 + c.charCodeAt(0) - 97);
+  if (/[0-9]/.test(c))
+    return String.fromCodePoint(120792 + c.charCodeAt(0) - 48);
+  return c;
+}).join("");
+function run(text, sty, scr = "", nor = false) {
+  if (!text)
+    return "";
+  const pr = nor ? "<m:nor/>" : (scr ? '<m:scr m:val="' + scr + '"/>' : "") + (sty ? '<m:sty m:val="' + sty + '"/>' : "");
+  return "<m:r>" + (pr ? "<m:rPr>" + pr + "</m:rPr>" : "") + (nor ? "" : CAMBRIA) + '<m:t xml:space="preserve">' + xml(text) + "</m:t></m:r>";
+}
+var NARY = "∑∏∐∫∬∭∮∯∰⋃⋂⋁⋀⨀⨁⨂⨄⨆";
+var STOP = "=<>≤≥≠≈≡∼≃≅→←↔⇒⇔+−-±∓,;";
+var ACCENT = {
+  "^": "̂",
+  "ˆ": "̂",
+  "¯": "̄",
+  "ˉ": "̄",
+  "→": "⃗",
+  "⃗": "⃗",
+  "˙": "̇",
+  "¨": "̈",
+  "~": "̃",
+  "˜": "̃",
+  "ˇ": "̌",
+  "´": "́",
+  "`": "̀",
+  "˘": "̆",
+  "˚": "̊",
+  "←": "⃖",
+  "↔": "⃡"
+};
+var BAR = "―‾̅_─—";
+function only(n) {
+  let k = n;
+  while (k && (k.tag === "mrow" || k.tag === "mstyle") && k.kids.length === 1)
+    k = k.kids[0];
+  return k;
+}
+var moText = (n) => {
+  const k = only(n);
+  return k && k.tag === "mo" ? tokenText(k) : null;
+};
+var texClass = (n) => n ? n.attrs["data-mjx-texclass"] || "" : "";
+function fence(n, side) {
+  if (!n)
+    return null;
+  const k = only(n);
+  if (!k || k.tag !== "mo")
+    return null;
+  if (texClass(n) === side || texClass(k) === side || k.attrs.fence === "true" && k.attrs.form === (side === "OPEN" ? "prefix" : "postfix"))
+    return tokenText(k);
+  return null;
+}
+function naryOf(n) {
+  const t = (k) => {
+    const s = moText(k);
+    return s && s.length === 1 && NARY.indexOf(s) !== -1 ? s : null;
+  };
+  if (n.tag === "mo") {
+    const c2 = t(n);
+    return c2 ? { chr: c2, sub: null, sup: null, under: false } : null;
+  }
+  const c = t(n.kids[0]);
+  if (!c)
+    return null;
+  switch (n.tag) {
+    case "munderover":
+      return { chr: c, sub: n.kids[1] || null, sup: n.kids[2] || null, under: true };
+    case "msubsup":
+      return { chr: c, sub: n.kids[1] || null, sup: n.kids[2] || null, under: false };
+    case "munder":
+      return { chr: c, sub: n.kids[1] || null, sup: null, under: true };
+    case "msub":
+      return { chr: c, sub: n.kids[1] || null, sup: null, under: false };
+    case "mover":
+      return { chr: c, sub: null, sup: n.kids[1] || null, under: true };
+    case "msup":
+      return { chr: c, sub: null, sup: n.kids[1] || null, under: false };
+  }
+  return null;
+}
+function limitOf(n) {
+  if (n.tag !== "munder" && n.tag !== "mover" && n.tag !== "munderover")
+    return false;
+  const b = only(n.kids[0]);
+  return !!b && (b.tag === "mo" || b.tag === "mi") && /^(lim|lim sup|lim inf|liminf|limsup|max|min|sup|inf|arg ?max|arg ?min)$/.test(tokenText(b));
+}
+function operandEnd(kids, from) {
+  let j = from;
+  while (j < kids.length) {
+    const s = moText(kids[j]);
+    if (s && s.length === 1 && STOP.indexOf(s) !== -1)
+      break;
+    j++;
+  }
+  return j;
+}
+function seq(kids) {
+  if (kids.length >= 2) {
+    const beg = fence(kids[0], "OPEN"), endc = fence(kids[kids.length - 1], "CLOSE");
+    const inner = kids.slice(1, -1);
+    if (beg != null && endc != null && !inner.some((k) => fence(k, "OPEN") != null || fence(k, "CLOSE") != null)) {
+      return '<m:d><m:dPr><m:begChr m:val="' + xml(beg) + '"/><m:endChr m:val="' + xml(endc) + '"/><m:ctrlPr>' + CAMBRIA + "</m:ctrlPr></m:dPr><m:e>" + seq(inner) + "</m:e></m:d>";
+    }
+  }
+  let out = "";
+  for (let i = 0; i < kids.length; i++) {
+    if (limitOf(kids[i])) {
+      const j2 = operandEnd(kids, i + 1);
+      out += "<m:func><m:funcPr><m:ctrlPr>" + CAMBRIA + "</m:ctrlPr></m:funcPr><m:fName>" + conv(kids[i]) + "</m:fName><m:e>" + seq(kids.slice(i + 1, j2)) + "</m:e></m:func>";
+      i = j2 - 1;
+      continue;
+    }
+    const nary = naryOf(kids[i]);
+    if (!nary) {
+      out += conv(kids[i]);
+      continue;
+    }
+    const j = operandEnd(kids, i + 1);
+    const pr = '<m:chr m:val="' + nary.chr + '"/><m:limLoc m:val="' + (nary.under ? "undOvr" : "subSup") + '"/>' + (nary.sub ? "" : '<m:subHide m:val="1"/>') + (nary.sup ? "" : '<m:supHide m:val="1"/>');
+    out += "<m:nary><m:naryPr>" + pr + "<m:ctrlPr>" + CAMBRIA + "</m:ctrlPr></m:naryPr><m:sub>" + (nary.sub ? conv(nary.sub) : "") + "</m:sub><m:sup>" + (nary.sup ? conv(nary.sup) : "") + "</m:sup><m:e>" + seq(kids.slice(i + 1, j)) + "</m:e></m:nary>";
+    i = j - 1;
+  }
+  return out;
+}
+var arg = (n) => n ? conv(n) : "";
+function space(n) {
+  const w = /^(-?[\d.]+)(em|ex|pt|px|mu)?$/.exec(String(n.attrs.width || "").trim());
+  if (!w)
+    return "";
+  const em = Number(w[1]) * (w[2] === "ex" ? 0.5 : w[2] === "pt" || w[2] === "px" ? 0.1 : w[2] === "mu" ? 1 / 18 : 1);
+  if (em <= 0.05)
+    return "";
+  if (em >= 1.9)
+    return run("  ", "p");
+  return run(em >= 0.9 ? " " : em >= 0.4 ? " " : em >= 0.25 ? " " : " ", "p");
+}
+function conv(n) {
+  const k = n.kids;
+  switch (n.tag) {
+    case "math":
+    case "mrow":
+    case "mstyle":
+    case "mpadded":
+    case "merror":
+    case "mtd":
+      return seq(k);
+    case "semantics":
+      return k.length ? conv(k[0]) : "";
+    case "annotation":
+    case "annotation-xml":
+    case "none":
+    case "mprescripts":
+    case "maligngroup":
+    case "malignmark":
+    case "mglyph":
+      return "";
+    case "mi": {
+      const t = tokenText(n);
+      if (n.attrs.mathvariant === "double-struck")
+        return run(doubleStruck(t), "p");
+      const v = VARIANT[n.attrs.mathvariant || ""];
+      if (v)
+        return run(t, v[1], v[0]);
+      return run(t, Array.from(t).length > 1 ? "p" : "");
+    }
+    case "mn":
+    case "mo": {
+      const v = VARIANT[n.attrs.mathvariant || ""];
+      return run(tokenText(n), v ? v[1] : "p", v ? v[0] : "");
+    }
+    case "mtext":
+      return run(tokenText(n), "", "", true);
+    case "ms":
+      return run('"' + tokenText(n) + '"', "", "", true);
+    case "mspace":
+      return space(n);
+    case "msup":
+      return "<m:sSup><m:e>" + arg(k[0]) + "</m:e><m:sup>" + arg(k[1]) + "</m:sup></m:sSup>";
+    case "msub":
+      return "<m:sSub><m:e>" + arg(k[0]) + "</m:e><m:sub>" + arg(k[1]) + "</m:sub></m:sSub>";
+    case "msubsup":
+      return "<m:sSubSup><m:e>" + arg(k[0]) + "</m:e><m:sub>" + arg(k[1]) + "</m:sub><m:sup>" + arg(k[2]) + "</m:sup></m:sSubSup>";
+    case "mfrac": {
+      const none = /^0(\.0*)?([a-z]+)?$/i.test(String(n.attrs.linethickness || "").trim());
+      return "<m:f>" + (none ? '<m:fPr><m:type m:val="noBar"/></m:fPr>' : "") + "<m:num>" + arg(k[0]) + "</m:num><m:den>" + arg(k[1]) + "</m:den></m:f>";
+    }
+    case "msqrt":
+      return '<m:rad><m:radPr><m:degHide m:val="1"/></m:radPr><m:deg/><m:e>' + seq(k) + "</m:e></m:rad>";
+    case "mroot":
+      return "<m:rad><m:deg>" + arg(k[1]) + "</m:deg><m:e>" + arg(k[0]) + "</m:e></m:rad>";
+    case "mover":
+    case "munder": {
+      const over = n.tag === "mover";
+      const mark = moText(k[1]);
+      if (mark && mark.length === 1) {
+        if (mark === (over ? "⏞" : "⏟") || mark === (over ? "⎴" : "⎵")) {
+          return '<m:groupChr><m:groupChrPr><m:chr m:val="' + mark + '"/><m:pos m:val="' + (over ? "top" : "bot") + '"/><m:vertJc m:val="' + (over ? "bot" : "top") + '"/></m:groupChrPr><m:e>' + arg(k[0]) + "</m:e></m:groupChr>";
+        }
+        if (BAR.indexOf(mark) !== -1)
+          return '<m:bar><m:barPr><m:pos m:val="' + (over ? "top" : "bot") + '"/></m:barPr><m:e>' + arg(k[0]) + "</m:e></m:bar>";
+        if (over && ACCENT[mark])
+          return '<m:acc><m:accPr><m:chr m:val="' + ACCENT[mark] + '"/></m:accPr><m:e>' + arg(k[0]) + "</m:e></m:acc>";
+      }
+      const tag = over ? "limUpp" : "limLow";
+      return "<m:" + tag + "><m:e>" + arg(k[0]) + "</m:e><m:lim>" + arg(k[1]) + "</m:lim></m:" + tag + ">";
+    }
+    case "munderover":
+      return "<m:limUpp><m:e><m:limLow><m:e>" + arg(k[0]) + "</m:e><m:lim>" + arg(k[1]) + "</m:lim></m:limLow></m:e><m:lim>" + arg(k[2]) + "</m:lim></m:limUpp>";
+    case "mtable":
+      return table(n);
+    case "mfenced": {
+      const open = n.attrs.open != null ? n.attrs.open : "(", close = n.attrs.close != null ? n.attrs.close : ")";
+      const sep = n.attrs.separators != null ? n.attrs.separators.trim().charAt(0) : ",";
+      return '<m:d><m:dPr><m:begChr m:val="' + xml(open) + '"/><m:sepChr m:val="' + xml(sep) + '"/><m:endChr m:val="' + xml(close) + '"/></m:dPr>' + (k.length ? k.map((x) => "<m:e>" + conv(x) + "</m:e>").join("") : "<m:e/>") + "</m:d>";
+    }
+    case "menclose":
+      return /box/.test(n.attrs.notation || "") ? "<m:borderBox><m:e>" + seq(k) + "</m:e></m:borderBox>" : seq(k);
+    case "mphantom":
+      return "<m:phant><m:e>" + seq(k) + "</m:e></m:phant>";
+    default:
+      return seq(k) + (n.text.trim() ? run(tokenText(n), "p") : "");
+  }
+}
+function table(n) {
+  const rows = n.kids.filter((r) => r.tag === "mtr" || r.tag === "mlabeledtr");
+  if (!rows.length)
+    return "";
+  const cells = rows.map((r) => (r.tag === "mlabeledtr" ? r.kids.slice(1) : r.kids).filter((c) => c.tag === "mtd"));
+  const labels = rows.map((r) => r.tag === "mlabeledtr" && r.kids[0] ? run(r.kids[0].kids.map((x) => /^m[tno]/.test(x.tag) ? tokenText(x) : "").join(""), "p") : "");
+  const label = (i) => labels[i] ? run("  ", "p") + labels[i] : "";
+  if (rows.length === 1 && cells[0].length === 1)
+    return seq(cells[0][0].kids) + label(0);
+  const width = Math.max(1, ...cells.map((c) => c.length));
+  const aligns = String(n.attrs.columnalign || "").trim().split(/\s+/).filter(Boolean);
+  if (aligns[0] === "right" && aligns[1] === "left") {
+    const aln = "<m:r><m:rPr><m:aln/></m:rPr>" + CAMBRIA + "<m:t></m:t></m:r>";
+    return "<m:eqArr><m:eqArrPr><m:ctrlPr>" + CAMBRIA + "</m:ctrlPr></m:eqArrPr>" + cells.map((row, i) => "<m:e>" + row.map((c, k) => (k ? aln : "") + seq(c.kids)).join("") + label(i) + "</m:e>").join("") + "</m:eqArr>";
+  }
+  const jc = (i) => {
+    const a = aligns[Math.min(i, aligns.length - 1)] || "center";
+    return a === "left" || a === "right" ? a : "center";
+  };
+  const mcs = Array.from({ length: width }, (_, i) => '<m:mc><m:mcPr><m:count m:val="1"/><m:mcJc m:val="' + jc(i) + '"/></m:mcPr></m:mc>').join("");
+  const body = cells.map((row, i) => "<m:mr>" + Array.from({ length: width }, (_, c) => "<m:e>" + (row[c] ? seq(row[c].kids) : "") + (c === width - 1 ? label(i) : "") + "</m:e>").join("") + "</m:mr>").join("");
+  return "<m:m><m:mPr><m:mcs>" + mcs + "</m:mcs><m:ctrlPr>" + CAMBRIA + "</m:ctrlPr></m:mPr>" + body + "</m:m>";
+}
+function wsMathmlToOmml(mml, display) {
+  const math = wsParseMathml(mml);
+  if (!math)
+    return "";
+  let body = "";
+  try {
+    body = conv(math);
+  } catch {
+    return "";
+  }
+  if (!body)
+    return "";
+  const one = "<m:oMath>" + body + "</m:oMath>";
+  return display ? '<m:oMathPara><m:oMathParaPr><m:jc m:val="center"/></m:oMathParaPr>' + one + "</m:oMathPara>" : one;
 }
 var WS_PAPERS = [
   { id: "letter", label: "US Letter — 8.5 × 11 in", w: 12240, h: 15840, mar: 1440 },
@@ -3003,6 +3351,18 @@ function wsUnshield(s) {
 function wsInlineRuns(text, opts) {
   const o = opts || {};
   let t = String(text == null ? "" : text);
+  const formulas = [];
+  const figs = o.figures;
+  if (figs && figs.math.size && t.indexOf("$") !== -1) {
+    t = t.split(/(`[^`]*`)/).map((seg, k) => k % 2 ? seg : seg.replace(WS_INLINE_MATH, (m2, before, tex) => {
+      const mml = figs.math.get("I\n" + tex);
+      const omml = mml ? wsMathmlToOmml(mml, false) : "";
+      if (!omml)
+        return m2;
+      formulas.push({ tex, omml });
+      return before + "" + (formulas.length - 1) + "";
+    })).join("");
+  }
   if (o.smartQuotes) {
     t = t.replace(/(\w)'(\w)/g, "$1’$2").replace(/(^|[\s([{\u201c])'/g, "$1‘").replace(/'/g, "’").replace(/(^|[\s([{\u2018])"/g, "$1“").replace(/"/g, "”");
   }
@@ -3038,10 +3398,10 @@ function wsInlineRuns(text, opts) {
   const push = (text2) => {
     if (!text2)
       return;
-    const run = { text: wsUnshield(text2), bold: bold || uBold, ital: ital2 || uItal, high: high && !!o.highlights };
-    if (run.high && hl && hl !== "yellow")
-      run.hl = hl;
-    runs.push(run);
+    const run2 = { text: wsUnshield(text2), bold: bold || uBold, ital: ital2 || uItal, high: high && !!o.highlights };
+    if (run2.high && hl && hl !== "yellow")
+      run2.hl = hl;
+    runs.push(run2);
   };
   while ((m = re.exec(t)) !== null) {
     if (m[1].charAt(0) === "_") {
@@ -3083,11 +3443,25 @@ function wsInlineRuns(text, opts) {
   if (last < t.length)
     push(t.slice(last));
   const out = [];
-  for (const r of runs) {
+  for (const r0 of runs) {
+    if (formulas.length && r0.text.indexOf("") !== -1) {
+      r0.text.split(/\uE020(\d+)\uE021/).forEach((bit, k) => {
+        if (k % 2) {
+          const f = formulas[Number(bit)];
+          if (f)
+            out.push({ text: "$" + f.tex + "$", math: f.omml });
+        } else if (bit)
+          cut(Object.assign({}, r0, { text: bit }));
+      });
+      continue;
+    }
+    cut(r0);
+  }
+  function cut(r) {
     const bits = r.text.split(/\[\^([^[\]]+)\]/);
     if (bits.length === 1) {
       out.push(r);
-      continue;
+      return;
     }
     for (let k = 0; k < bits.length; k++) {
       if (!bits[k])
@@ -3133,6 +3507,8 @@ function wsPara(runs, style, opts) {
   if (o.bodyLevel)
     pr.push('<w:outlineLvl w:val="9"/>');
   const body = (runs.length ? runs : [{ text: "" }]).map((r) => {
+    if (r.math)
+      return r.math;
     if (r.note) {
       const kind = r.noteEnd ? "endnote" : "footnote";
       return '<w:r><w:rPr><w:rStyle w:val="' + (r.noteEnd ? "Endnote" : "Footnote") + 'Reference"/></w:rPr><w:' + kind + 'Reference w:id="' + r.note + '"/></w:r>';
@@ -3163,7 +3539,7 @@ function wsTable(rows, o) {
   const paper = wsPaperOf(o), textW = Math.max(1440, paper.w - 2 * paper.mar), colW = Math.floor(textW / width);
   const grid = "<w:tblGrid>" + new Array(width).fill('<w:gridCol w:w="' + colW + '"/>').join("") + "</w:tblGrid>";
   const body = rows.map((cells, ri) => "<w:tr><w:trPr><w:cantSplit/></w:trPr>" + new Array(width).fill(0).map((_, ci) => {
-    const runs = wsInlineRuns(cells[ci] == null ? "" : cells[ci]);
+    const runs = wsInlineRuns(cells[ci] == null ? "" : cells[ci], o && o.figures ? { figures: o.figures } : null);
     if (ri === 0)
       runs.forEach((r) => {
         r.bold = true;
@@ -3202,21 +3578,21 @@ function wsDropTags(md) {
     for (; end2 > 0 && i <= end2; i++)
       out.push(lines[i]);
   }
-  let fence = false, math = false;
+  let fence2 = false, math = false;
   for (; i < lines.length; i++) {
     const line = lines[i];
     const t = line.trim();
     if (/^(```|~~~)/.test(t)) {
-      fence = !fence;
+      fence2 = !fence2;
       out.push(line);
       continue;
     }
-    if (!fence && t === "$$") {
+    if (!fence2 && t === "$$") {
       math = !math;
       out.push(line);
       continue;
     }
-    if (fence || math) {
+    if (fence2 || math) {
       out.push(line);
       continue;
     }
@@ -3242,10 +3618,10 @@ function wsFigureSources(md) {
   const lines = String(md == null ? "" : md).replace(/\r\n?/g, "\n").split("\n");
   for (let i = 0; i < lines.length; i++) {
     const t = lines[i].trim();
-    const fence = t.match(/^(`{3,}|~{3,})/);
-    if (fence) {
-      const ch = fence[1].charAt(0);
-      const info = t.slice(fence[1].length).trim().toLowerCase();
+    const fence2 = t.match(/^(`{3,}|~{3,})/);
+    if (fence2) {
+      const ch = fence2[1].charAt(0);
+      const info = t.slice(fence2[1].length).trim().toLowerCase();
       const buf = [];
       for (i++; i < lines.length; i++) {
         const ft = lines[i].trim();
@@ -3421,9 +3797,9 @@ function wsHtmlBlocks(md, o, pageOpen, parts) {
     }
     if (/^\[\^[^\]]+\]:/.test(t))
       continue;
-    const fence = t.match(/^(`{3,}|~{3,})/);
-    if (fence) {
-      const ch = fence[1].charAt(0);
+    const fence2 = t.match(/^(`{3,}|~{3,})/);
+    if (fence2) {
+      const ch = fence2[1].charAt(0);
       const buf = [];
       for (i++; i < lines.length; i++) {
         const ft = lines[i].trim();
@@ -3431,7 +3807,7 @@ function wsHtmlBlocks(md, o, pageOpen, parts) {
           break;
         buf.push(lines[i]);
       }
-      const info = t.slice(fence[1].length).trim().toLowerCase();
+      const info = t.slice(fence2[1].length).trim().toLowerCase();
       const svg = info === "mermaid" && o.figures ? o.figures.mermaid.get(buf.join("\n")) : void 0;
       parts.push(svg ? '<div class="mermaid">' + svg + "</div>" : '<pre class="code">' + esc(buf.join("\n")) + "</pre>");
       continue;
@@ -3577,9 +3953,9 @@ function wsBlocksFromMarkdown(md, opts) {
       }
       continue;
     }
-    const fence = t.match(/^(`{3,}|~{3,})/);
-    if (fence) {
-      const ch = fence[1].charAt(0);
+    const fence2 = t.match(/^(`{3,}|~{3,})/);
+    if (fence2) {
+      const ch = fence2[1].charAt(0);
       const buf = [];
       for (i++; i < lines.length; i++) {
         const ft = lines[i].trim();
@@ -3594,6 +3970,12 @@ function wsBlocksFromMarkdown(md, opts) {
     if (/^\$\$/.test(t)) {
       const mb = wsMathBlock(lines, i);
       i = mb.end;
+      const mml = o.figures ? o.figures.math.get("D\n" + mb.text) : void 0;
+      const omml = mml ? wsMathmlToOmml(mml, true) : "";
+      if (omml) {
+        out.push(wsPara([{ text: mb.text, math: omml }], "WsBody", { noIndent: true, align: "center" }));
+        continue;
+      }
       for (const ml of mb.text.split("\n"))
         out.push(wsPara([{ text: ml, mono: true }], "WsCode", { noIndent: true }));
       continue;
@@ -3750,9 +4132,9 @@ function wsTocTitle(o) {
 }
 function wsHdrFtrXml(tag, right, pageAt, contentW, side) {
   const page = '<w:fldSimple w:instr="PAGE"><w:r><w:t>1</w:t></w:r></w:fldSimple>';
-  const run = (s) => s ? '<w:r><w:t xml:space="preserve">' + wsXml(s) + "</w:t></w:r>" : "";
+  const run2 = (s) => s ? '<w:r><w:t xml:space="preserve">' + wsXml(s) + "</w:t></w:r>" : "";
   const tab = "<w:r><w:tab/></w:r>";
-  const headAt = (slot) => !right ? "" : right.includes("{page}") ? wsHeadRunsXml(right) : run(right + (pageAt === slot ? " " : ""));
+  const headAt = (slot) => !right ? "" : right.includes("{page}") ? wsHeadRunsXml(right) : run2(right + (pageAt === slot ? " " : ""));
   return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:' + tag + ' xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:pPr><w:tabs><w:tab w:val="center" w:pos="' + Math.round(contentW / 2) + '"/><w:tab w:val="right" w:pos="' + contentW + '"/></w:tabs><w:ind w:firstLine="0"/></w:pPr>' + (side === "left" ? headAt("left") : "") + (pageAt === "left" ? page : "") + tab + (pageAt === "center" ? page : "") + tab + (side === "left" ? "" : headAt("right")) + (pageAt === "right" ? page : "") + "</w:p></w:" + tag + ">";
 }
 function wsPageBoxesCss(header, at, blank, side) {
@@ -3977,13 +4359,13 @@ function wsBuildDocx(sections, opt) {
   const wantHeader = !!o.runningHeader || pnAt.startsWith("top-");
   const wantFooter = pnAt.startsWith("bottom-");
   const headerRef = (wantHeader ? '<w:headerReference w:type="default" r:id="rId3"/>' + (wantFirst ? '<w:headerReference w:type="first" r:id="rId4"/><w:titlePg/>' : "") : "") + (wantFooter ? '<w:footerReference w:type="default" r:id="rId7"/>' : "");
-  const doc = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><w:body>' + body.join("") + "<w:sectPr>" + headerRef + '<w:pgSz w:w="' + paper.w + '" w:h="' + paper.h + '"/><w:pgMar w:top="' + paper.mar + '" w:right="' + paper.mar + '" w:bottom="' + paper.mar + '" w:left="' + paper.mar + '" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr></w:body></w:document>';
+  const doc = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><w:body>' + body.join("") + "<w:sectPr>" + headerRef + '<w:pgSz w:w="' + paper.w + '" w:h="' + paper.h + '"/><w:pgMar w:top="' + paper.mar + '" w:right="' + paper.mar + '" w:bottom="' + paper.mar + '" w:left="' + paper.mar + '" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr></w:body></w:document>';
   const types = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>' + Array.from(new Set(media.map((m) => m.ext))).map((x) => '<Default Extension="' + x + '" ContentType="' + (WS_IMAGE_MIME[x] || "image/png") + '"/>').join("") + '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>' + (wantHeader ? '<Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>' : "") + (wantFooter ? '<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>' : "") + (wantFirst ? '<Override PartName="/word/header2.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>' : "") + (wantSettings ? '<Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>' : "") + (noteXml.length ? '<Override PartName="/word/' + noteTag + 's.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.' + noteTag + 's+xml"/>' : "") + "</Types>";
   const rootRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>';
   const docRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' + (wantHeader ? '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/>' : "") + (wantFooter ? '<Relationship Id="rId7" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>' : "") + (wantFirst ? '<Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header2.xml"/>' : "") + (wantSettings ? '<Relationship Id="rId5" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>' : "") + (noteXml.length ? '<Relationship Id="rId6" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/' + noteTag + 's" Target="' + noteTag + 's.xml"/>' : "") + media.map((m) => '<Relationship Id="' + m.rid + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/' + m.name + '"/>').join("") + "</Relationships>";
   const settingsXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' + (wantToc ? '<w:updateFields w:val="true"/>' : "") + (noteXml.length ? "<w:" + noteTag + "Pr><w:" + noteTag + ' w:id="-1"/><w:' + noteTag + ' w:id="0"/></w:' + noteTag + "Pr>" : "") + "</w:settings>";
   const sep = (id, el) => "<w:" + noteTag + ' w:type="' + el + '" w:id="' + id + '"><w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:' + el + "/></w:r></w:p></w:" + noteTag + ">";
-  const notesPart = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:' + noteTag + 's xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' + sep(-1, "separator") + sep(0, "continuationSeparator") + noteXml.join("") + "</w:" + noteTag + "s>";
+  const notesPart = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:' + noteTag + 's xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' + sep(-1, "separator") + sep(0, "continuationSeparator") + noteXml.join("") + "</w:" + noteTag + "s>";
   const entries = [
     { name: "[Content_Types].xml", bytes: wsUtf8(types) },
     { name: "_rels/.rels", bytes: wsUtf8(rootRels) },
@@ -5999,10 +6381,10 @@ function wsZip(entries) {
     const name = wsUtf8(e.name);
     const data = e.bytes;
     const crc = wsCrc32(data);
-    const local = [].concat(u32(67324752), u16(20), u16(2048), u16(0), u16(0), u16(0), u32(crc), u32(data.length), u32(data.length), u16(name.length), u16(0), name);
+    const local2 = [].concat(u32(67324752), u16(20), u16(2048), u16(0), u16(0), u16(0), u32(crc), u32(data.length), u32(data.length), u16(name.length), u16(0), name);
     central.push([].concat(u32(33639248), u16(20), u16(20), u16(2048), u16(0), u16(0), u16(0), u32(crc), u32(data.length), u32(data.length), u16(name.length), u16(0), u16(0), u16(0), u16(0), u32(0), u32(offset), name));
-    chunks.push(local, data);
-    offset += local.length + data.length;
+    chunks.push(local2, data);
+    offset += local2.length + data.length;
   }
   const cdStart = offset;
   let cdLen = 0;
@@ -6089,8 +6471,8 @@ function wsPageOfPart(el, pageOf) {
   const at = pageOf.get(k);
   return at == null ? null : at + on;
 }
-function wsTableCutAt(table, colOf, col) {
-  const rows = Array.from(table.querySelectorAll(":scope > tbody > tr"));
+function wsTableCutAt(table2, colOf, col) {
+  const rows = Array.from(table2.querySelectorAll(":scope > tbody > tr"));
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i].getClientRects()[0];
     if (r && colOf(r) >= col)
@@ -6098,11 +6480,11 @@ function wsTableCutAt(table, colOf, col) {
   }
   return null;
 }
-function wsTableSplit(table, row) {
+function wsTableSplit(table2, row) {
   const body = row.parentElement;
   if (!body)
     return null;
-  const T22 = table.cloneNode(false);
+  const T22 = table2.cloneNode(false);
   T22.classList.remove("tbsplit");
   T22.classList.add("tbcont");
   const B2 = T22.appendChild(body.cloneNode(false));
@@ -6111,8 +6493,8 @@ function wsTableSplit(table, row) {
     B2.appendChild(r);
     r = nx;
   }
-  table.after(T22);
-  table.classList.add("tbsplit");
+  table2.after(T22);
+  table2.classList.add("tbsplit");
   return T22;
 }
 function wsPageJoin(flow) {
@@ -6782,7 +7164,7 @@ function wsEpubCheck(bytes) {
     const b = files.get(n);
     return b ? dec.decode(b) : null;
   };
-  const xml = (n) => {
+  const xml2 = (n) => {
     const t = text(n);
     if (t == null)
       return null;
@@ -6791,10 +7173,10 @@ function wsEpubCheck(bytes) {
   };
   if (!order.length || order[0].name !== "mimetype" || order[0].method !== 0 || text("mimetype") !== "application/epub+zip")
     out.push(wsT('the mimetype is not first, stored and "{type}"', { type: "application/epub+zip" }));
-  const cont = xml("META-INF/container.xml");
+  const cont = xml2("META-INF/container.xml");
   const rf = cont ? cont.getElementsByTagName("rootfile")[0] : null;
   const opfPath = rf && rf.getAttribute("full-path") || "";
-  const opf = opfPath ? xml(opfPath) : null;
+  const opf = opfPath ? xml2(opfPath) : null;
   if (!opf) {
     out.push(opfPath ? wsT("the package ({file}) is missing or not well formed", { file: opfPath }) : wsT("the package (none named) is missing or not well formed"));
     return out;
@@ -6823,7 +7205,7 @@ function wsEpubCheck(bytes) {
   for (const name of Array.from(files.keys())) {
     if (!/\.xhtml$/.test(name))
       continue;
-    const d = xml(name);
+    const d = xml2(name);
     if (!d) {
       out.push(wsT("{file} is not well-formed XHTML", { file: name.slice(base.length) }));
       continue;
@@ -6849,13 +7231,13 @@ function wsEpubCheck(bytes) {
     else if (frag && !there.has(frag))
       out.push(wsT("the contents link to {link}, an id not there", { link: href }));
   };
-  const navDoc = nav && nav !== "\0" ? xml(nav) : null;
+  const navDoc = nav && nav !== "\0" ? xml2(nav) : null;
   if (navDoc)
     for (const a of Array.from(navDoc.getElementsByTagName("a")))
       land(nav, a.getAttribute("href") || "");
   const ncxItem = Array.from(opf.getElementsByTagName("item")).find((it) => it.getAttribute("media-type") === "application/x-dtbncx+xml");
   const ncxPath = ncxItem ? base + (ncxItem.getAttribute("href") || "") : "";
-  const ncx = ncxPath ? xml(ncxPath) : null;
+  const ncx = ncxPath ? xml2(ncxPath) : null;
   if (ncx)
     for (const c of Array.from(ncx.getElementsByTagName("content")))
       land(ncxPath, c.getAttribute("src") || "");
@@ -7730,20 +8112,20 @@ function wsNoteHeadings(o, sec, md) {
   return o && o.folderHeadings ? wsDemoteHeadings(text, sec.depth || 0) : text;
 }
 function wsDropHeadings(md) {
-  let fence = null;
+  let fence2 = null;
   const lines = String(md == null ? "" : md).split("\n"), out = [];
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const f = /^\s*(```+|~~~+)/.exec(line);
     if (f) {
-      if (!fence)
-        fence = f[1][0];
-      else if (f[1][0] === fence)
-        fence = null;
+      if (!fence2)
+        fence2 = f[1][0];
+      else if (f[1][0] === fence2)
+        fence2 = null;
       out.push(line);
       continue;
     }
-    if (!fence && /^#{1,6}\s/.test(line)) {
+    if (!fence2 && /^#{1,6}\s/.test(line)) {
       if (i + 1 < lines.length && !lines[i + 1].trim())
         i++;
       continue;
@@ -7756,17 +8138,17 @@ function wsDemoteHeadings(md, by) {
   const n = Math.max(0, Math.floor(Number(by) || 0));
   if (!n)
     return String(md == null ? "" : md);
-  let fence = null;
+  let fence2 = null;
   return String(md == null ? "" : md).split("\n").map((line) => {
     const f = /^\s*(```+|~~~+)/.exec(line);
     if (f) {
-      if (!fence)
-        fence = f[1][0];
-      else if (f[1][0] === fence)
-        fence = null;
+      if (!fence2)
+        fence2 = f[1][0];
+      else if (f[1][0] === fence2)
+        fence2 = null;
       return line;
     }
-    if (fence)
+    if (fence2)
       return line;
     const h = /^(#{1,6})(\s)/.exec(line);
     if (!h)
@@ -10574,13 +10956,13 @@ function wsBuildPackEngine(pack) {
       if (syl >= 4)
         add("poly4", 1);
     }
-    let run = "", len = 0;
+    let run2 = "", len = 0;
     const close = () => {
-      if (run && len) {
-        add(run + "Len", len);
-        add(run + "N", 1);
+      if (run2 && len) {
+        add(run2 + "Len", len);
+        add(run2 + "N", 1);
       }
-      run = "";
+      run2 = "";
       len = 0;
     };
     for (const ch of Array.from(text)) {
@@ -10595,9 +10977,9 @@ function wsBuildPackEngine(pack) {
       }
       if (/[\u3001\uff0c,]/.test(ch))
         add("commas", 1);
-      if (k !== run) {
+      if (k !== run2) {
         close();
-        run = k;
+        run2 = k;
       }
       if (k)
         len++;
@@ -12038,7 +12420,7 @@ var WordSmithSettingTab = class _WordSmithSettingTab extends import_obsidian3.Pl
       const cl = r.target.classList;
       return cl.contains("ws-pill") || cl.contains("ws-set-section") || cl.contains("ws-set-entry");
     };
-    const run = (records) => {
+    const run2 = (records) => {
       try {
         if (records && records.length && records.every(own))
           return;
@@ -12049,13 +12431,13 @@ var WordSmithSettingTab = class _WordSmithSettingTab extends import_obsidian3.Pl
     };
     try {
       const win = doc.defaultView || window;
-      this._entryWatch = new win.MutationObserver((records) => run(records));
+      this._entryWatch = new win.MutationObserver((records) => run2(records));
       this._entryWatch.observe(doc.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
       this._entryDoc = doc;
     } catch (_) {
       wsCatch("watchEntries: new MutationObserver", _);
     }
-    run();
+    run2();
   }
   teardown() {
     if (this._entryWatch) {
@@ -12301,9 +12683,9 @@ var WordSmithSettingTab = class _WordSmithSettingTab extends import_obsidian3.Pl
     (0, import_obsidian3.setIcon)(el, icon);
     st.settingEl.prepend(el);
   }
-  buttonRow(name, desc, text, run, visible) {
+  buttonRow(name, desc, text, run2, visible) {
     const def = { name, desc, render: (st) => {
-      st.addButton((b) => b.setButtonText(wsT(text)).onClick(run));
+      st.addButton((b) => b.setButtonText(wsT(text)).onClick(run2));
     } };
     if (visible)
       def.visible = visible;
@@ -12443,10 +12825,10 @@ var WordSmithSettingTab = class _WordSmithSettingTab extends import_obsidian3.Pl
     });
     return b;
   }
-  action(parent, icon, label, run) {
+  action(parent, icon, label, run2) {
     const b = parent.createEl("button", { cls: "ws-card-action clickable-icon", attr: { type: "button", "aria-label": label, title: label } });
     (0, import_obsidian3.setIcon)(b, icon);
-    b.addEventListener("click", run);
+    b.addEventListener("click", run2);
     return b;
   }
   swatchRow(st) {
@@ -12979,7 +13361,7 @@ var WordSmithSettingTab = class _WordSmithSettingTab extends import_obsidian3.Pl
     const box = this.block(st, "ws-token-help-box").createDiv({ cls: "ws-token-help" });
     const rail = box.createDiv({ cls: "ws-rail ws-help-rail" });
     const groups = [];
-    let table = null, body = null;
+    let table2 = null, body = null;
     const pick = (i) => {
       groups.forEach((g2, k) => {
         setClass(g2.el, "is-picked", k === i);
@@ -12990,7 +13372,7 @@ var WordSmithSettingTab = class _WordSmithSettingTab extends import_obsidian3.Pl
     };
     const G = (name, icon) => {
       const el = box.createDiv({ cls: "ws-help-sect" });
-      table = el.createEl("table", { cls: "ws-help-table" });
+      table2 = el.createEl("table", { cls: "ws-help-table" });
       body = null;
       const pill = this.pill(rail, name, icon);
       const i = groups.length;
@@ -12999,16 +13381,16 @@ var WordSmithSettingTab = class _WordSmithSettingTab extends import_obsidian3.Pl
       return el;
     };
     const SUB = (title) => {
-      if (!table)
+      if (!table2)
         return;
-      body = table.createEl("tbody");
+      body = table2.createEl("tbody");
       body.createEl("tr", { cls: "ws-help-sub" }).createEl("th", { text: wsT(title), attr: { colspan: "2" } });
     };
     const L = (tokens, gloss) => {
-      if (!table)
+      if (!table2)
         return;
       if (!body)
-        body = table.createEl("tbody");
+        body = table2.createEl("tbody");
       const tr = body.createEl("tr", { cls: "ws-help-line" });
       const toks = tr.createEl("td", { cls: "ws-help-toks" });
       for (const t of tokens)
@@ -13155,11 +13537,11 @@ var WordSmithSettingTab = class _WordSmithSettingTab extends import_obsidian3.Pl
     }
     this.rovingRow(strip, uses).picked(Math.max(0, names.indexOf(active)));
     const acts = box.createDiv({ cls: "ws-cards ws-preset-acts" });
-    const more = (icon, label, run) => {
+    const more = (icon, label, run2) => {
       const b = acts.createEl("button", { cls: "ws-card ws-card-more", attr: { type: "button" } });
       (0, import_obsidian3.setIcon)(b.createSpan({ cls: "ws-card-more-icon" }), icon);
       b.createSpan({ cls: "ws-card-name", text: wsT(label) });
-      b.addEventListener("click", run);
+      b.addEventListener("click", run2);
       return b;
     };
     more("save", "Save", () => {
@@ -14538,7 +14920,7 @@ var WordSmithSettingTab = class _WordSmithSettingTab extends import_obsidian3.Pl
   renderCiteTokens(st) {
     const box = this.block(st, "ws-token-help-box").createDiv({ cls: "ws-token-help" });
     this.infoInto(st, true);
-    const table = box.createEl("table", { cls: "ws-help-table" });
+    const table2 = box.createEl("table", { cls: "ws-help-table" });
     const GROUPS = [
       ["Who", ["{author}", "{etal}", "{etal-amp}", "{authors}", "{authors-full}", "{authors-initials}", "{authors-apa}", "{editors}", "{translators}"]],
       ["The work", ["{year}", "{origyear}", "{title}", "{title*}", "{title-quoted}", "{edition}", "{series}"]],
@@ -14551,7 +14933,7 @@ var WordSmithSettingTab = class _WordSmithSettingTab extends import_obsidian3.Pl
       GROUPS[GROUPS.length - 1][1].push(...rest);
     const gloss = new Map(WS_CITE_TOKENS);
     for (const [title, toks] of GROUPS) {
-      const body = table.createEl("tbody");
+      const body = table2.createEl("tbody");
       body.createEl("tr", { cls: "ws-help-sub" }).createEl("th", { text: wsT(title), attr: { colspan: "2" } });
       for (const tok of toks) {
         const what = gloss.get(tok);
@@ -19505,19 +19887,19 @@ var treeMethods = {
     if (this._treeShapeQueued)
       return;
     this._treeShapeQueued = true;
-    const run = () => {
+    const run2 = () => {
       this._treeShapeQueued = false;
       this.treeOrderChanged();
     };
     try {
       if (typeof window !== "undefined" && window.requestAnimationFrame) {
-        window.requestAnimationFrame(run);
+        window.requestAnimationFrame(run2);
         return;
       }
     } catch (_) {
       wsCatch("treeShapeChanged: if (typeof window !== 'undefined' && window.requestAnimationFrame)", _);
     }
-    window.setTimeout(run, 0);
+    window.setTimeout(run2, 0);
   },
   treeOrderChanged() {
     try {
@@ -21785,14 +22167,14 @@ function wsOrgAround(line, slot) {
   return marked ? [a ? "⟦" + a + "⟧" : "", b ? "⟦" + b + "⟧" : ""] : [a, b];
 }
 function wsOrgSnapAccent(a) {
-  const { ctx, orgZoomOf, table } = a;
+  const { ctx, orgZoomOf, table: table2 } = a;
   const w0 = ctx.ownerWin();
   const dpr = w0 && w0.devicePixelRatio || 1;
-  const scope = table.closest(".ws-uni-modal") || table.closest(".modal") || table.ownerDocument.documentElement;
+  const scope = table2.closest(".ws-uni-modal") || table2.closest(".modal") || table2.ownerDocument.documentElement;
   if (scope && scope.style) {
     scope.style.setProperty("--ws-dpr", String(dpr));
   }
-  const marks = Array.from(table.querySelectorAll(".ws-org-row.ws-org-active td.ws-org-name, .ws-org-row.is-selected td.ws-org-name"));
+  const marks = Array.from(table2.querySelectorAll(".ws-org-row.ws-org-active td.ws-org-name, .ws-org-row.is-selected td.ws-org-name"));
   for (const el of marks) {
     if (!el)
       continue;
@@ -21819,7 +22201,7 @@ function wsOrgSnapAccent(a) {
   }
 }
 function wsOrgNameLine(a) {
-  const { ctx, nameTh, orgSnapAccent, orgZoomOf, table, wrap } = a;
+  const { ctx, nameTh, orgSnapAccent, orgZoomOf, table: table2, wrap } = a;
   try {
     const host = wrap.parentElement;
     if (!host)
@@ -21832,27 +22214,27 @@ function wsOrgNameLine(a) {
     try {
       const narrow = !!(ctx.orgNarrowNow && ctx.orgNarrowNow());
       if (narrow) {
-        const tableW = table.getBoundingClientRect().width / zoom;
+        const tableW = table2.getBoundingClientRect().width / zoom;
         const room = Math.floor(wrap.clientWidth - Math.max(0, tableW - w));
-        const was = table.style.getPropertyValue("--ws-org-nameroom");
+        const was = table2.style.getPropertyValue("--ws-org-nameroom");
         const now = room > 0 ? room + "px" : "";
         const ceil = ctx.orgColCeil(wrap);
         const ceilNow = ceil > 0 ? ceil + "px" : "";
-        const ceilWas = table.style.getPropertyValue("--ws-org-nameceil");
+        const ceilWas = table2.style.getPropertyValue("--ws-org-nameceil");
         if (was !== now || ceilWas !== ceilNow) {
           if (now)
-            table.style.setProperty("--ws-org-nameroom", now);
+            table2.style.setProperty("--ws-org-nameroom", now);
           else
-            table.style.removeProperty("--ws-org-nameroom");
+            table2.style.removeProperty("--ws-org-nameroom");
           if (ceilNow)
-            table.style.setProperty("--ws-org-nameceil", ceilNow);
+            table2.style.setProperty("--ws-org-nameceil", ceilNow);
           else
-            table.style.removeProperty("--ws-org-nameceil");
+            table2.style.removeProperty("--ws-org-nameceil");
           w = nameTh.getBoundingClientRect().width / zoom;
         }
-      } else if (table.style.getPropertyValue("--ws-org-nameroom") || table.style.getPropertyValue("--ws-org-nameceil")) {
-        table.style.removeProperty("--ws-org-nameroom");
-        table.style.removeProperty("--ws-org-nameceil");
+      } else if (table2.style.getPropertyValue("--ws-org-nameroom") || table2.style.getPropertyValue("--ws-org-nameceil")) {
+        table2.style.removeProperty("--ws-org-nameroom");
+        table2.style.removeProperty("--ws-org-nameceil");
         w = nameTh.getBoundingClientRect().width / zoom;
       }
     } catch (_) {
@@ -21861,7 +22243,7 @@ function wsOrgNameLine(a) {
     host.style.setProperty("--ws-org-nameline", Math.round(wrap.offsetLeft + w) + "px");
     host.style.setProperty("--ws-org-nametop", Math.round(wrap.offsetTop) + "px");
     host.style.setProperty("--ws-org-headh", (nameTh.getBoundingClientRect().height / zoom).toFixed(2) + "px");
-    const tall = Math.min(table.getBoundingClientRect().height / zoom, wrap.clientHeight);
+    const tall = Math.min(table2.getBoundingClientRect().height / zoom, wrap.clientHeight);
     host.style.setProperty("--ws-org-nameend", Math.max(0, tall).toFixed(2) + "px");
   } catch (_) {
     wsCatch("orgTableMake / orgNameLine: const host = wrap.parentElement;", _);
@@ -22339,21 +22721,21 @@ function wsOrgDrawTable(plugin, a) {
     ctx.ses.scroll = ctx.orgScrollTop;
     ctx.orgScrollLeft = wrap.scrollLeft;
   }, { passive: true });
-  const table = wrap.createEl("table", { cls: "ws-org-table" });
-  ctx.orgNameStamp(table);
+  const table2 = wrap.createEl("table", { cls: "ws-org-table" });
+  ctx.orgNameStamp(table2);
   const nameAlone = cols.length === 0;
-  table.toggleClass("is-namealone", nameAlone);
+  table2.toggleClass("is-namealone", nameAlone);
   ctx.panel.toggleClass("ws-org-namealone", nameAlone);
   if (nums) {
-    table.addClass("has-num");
-    table.style.setProperty("--ws-org-numw", "calc(" + Math.max(1, numW) + "ch + 8px)");
+    table2.addClass("has-num");
+    table2.style.setProperty("--ws-org-numw", "calc(" + Math.max(1, numW) + "ch + 8px)");
   }
-  const thead = table.createEl("thead");
+  const thead = table2.createEl("thead");
   const hr = thead.createEl("tr");
   const nameTh = hr.createEl("th", { cls: "ws-org-name", text: wsT("Name") });
   if (nums)
     nameTh.createSpan({ cls: "ws-org-numhead", text: "#" });
-  ctx.orgNameGripBind(ctx.panel, nameTh, table);
+  ctx.orgNameGripBind(ctx.panel, nameTh, table2);
   nameTh.title = wsT("Sort: ascending, then descending, then the book’s order");
   if (ctx.orgLens.sort && ctx.orgLens.sort.id === "name") {
     nameTh.createSpan({
@@ -22386,18 +22768,18 @@ function wsOrgDrawTable(plugin, a) {
     }
     return isFinite(z) && z > 0 ? z : 1;
   };
-  const orgSnapAccent = () => wsOrgSnapAccent({ ctx, orgZoomOf, table });
-  const orgNameLine = () => wsOrgNameLine({ ctx, nameTh, orgSnapAccent, orgZoomOf, table, wrap });
+  const orgSnapAccent = () => wsOrgSnapAccent({ ctx, orgZoomOf, table: table2 });
+  const orgNameLine = () => wsOrgNameLine({ ctx, nameTh, orgSnapAccent, orgZoomOf, table: table2, wrap });
   ctx.orgColFitNow = () => {
-    const ths = Array.from(table.querySelectorAll("thead th[data-col]"));
+    const ths = Array.from(table2.querySelectorAll("thead th[data-col]"));
     const narrow = !!(ctx.orgNarrowNow && ctx.orgNarrowNow());
     if (!ths.length && !narrow)
       return;
-    for (const cell of Array.from(table.querySelectorAll("th[data-col], td[data-col]"))) {
+    for (const cell of Array.from(table2.querySelectorAll("th[data-col], td[data-col]"))) {
       ctx.orgColUnfix(cell);
     }
     const ceil = ctx.orgColCeil(wrap);
-    const zoomC = orgZoomOf(table);
+    const zoomC = orgZoomOf(table2);
     const got = ths.map((th2) => ({
       id: th2.getAttribute("data-col"),
       w: Math.round(th2.getBoundingClientRect().width / zoomC)
@@ -22425,7 +22807,7 @@ function wsOrgDrawTable(plugin, a) {
     const w0 = ctx.ownerWin();
     if (w0 && w0.ResizeObserver) {
       ctx.orgNameRO = new w0.ResizeObserver(() => orgNameLine());
-      ctx.orgNameRO.observe(table);
+      ctx.orgNameRO.observe(table2);
       ctx.orgNameRO.observe(wrap);
     }
     if (w0 && w0.setTimeout)
@@ -22437,10 +22819,10 @@ function wsOrgDrawTable(plugin, a) {
   }
   wsOrgDrawHeads(plugin, { cols, ctx, fill, hr, s, sortCol, sortDir, wrap });
   hr.createEl("th", { cls: "ws-org-headpick" });
-  const tbody = table.createEl("tbody");
+  const tbody = table2.createEl("tbody");
   const colspan = cols.length + 2;
   if (ctx.orgLastGrouping !== null && lensed !== ctx.orgLastGrouping) {
-    table.addClass("is-melt");
+    table2.addClass("is-melt");
   }
   ctx.orgLastGrouping = lensed;
   const orgLensEmptied = !rows.length && !!list.length;
@@ -22456,7 +22838,7 @@ function wsOrgDrawTable(plugin, a) {
       const p = tr0.getAttribute("data-path") || "";
       tr0.toggleClass("is-selected", !tr0.classList.contains("is-folder") && ctx.orgSelHas(p));
     }
-    table.toggleClass("has-sel", ctx.orgSelCount() >= 2);
+    table2.toggleClass("has-sel", ctx.orgSelCount() >= 2);
     try {
       orgSnapAccent();
     } catch (_) {
@@ -23687,9 +24069,9 @@ var wsOrgFlagsMake = (d) => {
           td.appendChild(more);
       }
       try {
-        const table = td.closest("table");
+        const table2 = td.closest("table");
         const draw = d.tableCtx && d.tableCtx.orgAggInto;
-        if (table && draw) {
+        if (table2 && draw) {
           const redo = (cell, under) => {
             if (!cell)
               return;
@@ -23699,7 +24081,7 @@ var wsOrgFlagsMake = (d) => {
             if (agg)
               draw(cell, agg);
           };
-          for (const tr of Array.from(table.querySelectorAll("tr.ws-org-row.is-folder"))) {
+          for (const tr of Array.from(table2.querySelectorAll("tr.ws-org-row.is-folder"))) {
             const fp = tr.getAttribute("data-path") || "";
             if (fp && String(path).indexOf(fp + "/") === 0) {
               const cell = tr.querySelector('td[data-col="mark"]');
@@ -23707,7 +24089,7 @@ var wsOrgFlagsMake = (d) => {
                 redo(cell, d.orgUnder(fp));
             }
           }
-          const sub = table.querySelector('tr.ws-org-subrow td[data-col="mark"]');
+          const sub = table2.querySelector('tr.ws-org-subrow td[data-col="mark"]');
           if (sub)
             redo(sub, d.orgUnder(d.orgAt()));
         }
@@ -23774,7 +24156,7 @@ var wsOrgJournalMake = ({ paint, say, fail }) => {
     hist.redo.length = 0;
     repaint();
   };
-  const run = async (dir) => {
+  const run2 = async (dir) => {
     if (hist.busy)
       return false;
     const from = dir === "redo" ? hist.redo : hist.undo;
@@ -23802,7 +24184,7 @@ var wsOrgJournalMake = ({ paint, say, fail }) => {
     canRedo: () => hist.redo.length > 0,
     undoLabel: () => hist.undo.length ? hist.undo[hist.undo.length - 1].label : "",
     redoLabel: () => hist.redo.length ? hist.redo[hist.redo.length - 1].label : "",
-    run: (dir) => run(dir),
+    run: (dir) => run2(dir),
     size: () => ({ undo: hist.undo.length, redo: hist.redo.length })
   };
   const nameOf = (p) => (String(p || "").split("/").pop() || "").replace(/\.md$/i, "");
@@ -23810,7 +24192,7 @@ var wsOrgJournalMake = ({ paint, say, fail }) => {
     const n = paths.length;
     return n === 1 ? wsT("{what} on {name}", { what, name: nameOf(paths[0]) }) : wsT("{what} on {n} notes", { what, n });
   };
-  return { push, run, api, on, repaint };
+  return { push, run: run2, api, on, repaint };
 };
 var wsOrgKeysMake = (d) => {
   const cursorItem = () => d.orgSel.cursor ? d.itemOf(d.orgSel.cursor) : null;
@@ -25494,9 +25876,9 @@ var wsOrgReadingsMake = (d) => {
     if (had && had.mtime === m)
       return Promise.resolve(had.words);
     const key = p + "\0" + m;
-    let run = vocabReading.get(key);
-    if (!run) {
-      run = (async () => {
+    let run2 = vocabReading.get(key);
+    if (!run2) {
+      run2 = (async () => {
         const f = d.plugin.app.vault.getAbstractFileByPath(p);
         if (!(f instanceof import_obsidian21.TFile))
           return null;
@@ -25504,9 +25886,9 @@ var wsOrgReadingsMake = (d) => {
         vocabWords.set(p, { mtime: m, words });
         return words;
       })().finally(() => vocabReading.delete(key));
-      vocabReading.set(key, run);
+      vocabReading.set(key, run2);
     }
-    return run;
+    return run2;
   };
   const orgFolderVocab = (self, paths, ready) => {
     const notes = (paths || []).filter((p) => (Number(orgColRaw(VOCAB_COL, p)) || 0) > 0);
@@ -25517,9 +25899,9 @@ var wsOrgReadingsMake = (d) => {
     if (done && done.sig === sig)
       return done.agg;
     const key = self + "" + sig;
-    let run = vocabRunning.get(key);
-    if (!run) {
-      run = (async () => {
+    let run2 = vocabRunning.get(key);
+    if (!run2) {
+      run2 = (async () => {
         const all2 = /* @__PURE__ */ new Set();
         for (const p of notes) {
           const w = await wordsOf(p);
@@ -25531,9 +25913,9 @@ var wsOrgReadingsMake = (d) => {
         vocabDone.set(self, { sig, agg });
         return agg;
       })().finally(() => vocabRunning.delete(key));
-      vocabRunning.set(key, run);
+      vocabRunning.set(key, run2);
     }
-    run.then(ready, (e) => wsCatch("orgFolderVocab", e));
+    run2.then(ready, (e) => wsCatch("orgFolderVocab", e));
     return done ? done.agg : null;
   };
   return { orgColRaw, orgColText, orgFolderIcon, orgColAgg, orgColSortKey, orgPlanTitle, orgFolderVocab };
@@ -26317,12 +26699,12 @@ var wsOrgWidthsMake = (d) => {
   const orgNameW = () => orgColW("name", null);
   let orgNameLineNow = null;
   let orgNameRO = null;
-  const orgNameStamp = (table) => {
+  const orgNameStamp = (table2) => {
     const w = orgNameW();
     if (!w)
       return;
-    table.addClass("is-namefixed");
-    table.style.setProperty("--ws-org-namew", w + "px");
+    table2.addClass("is-namefixed");
+    table2.style.setProperty("--ws-org-namew", w + "px");
   };
   const orgColApply = (cell, w) => {
     cell.style.width = w + "px";
@@ -26475,15 +26857,15 @@ var wsOrgWidthsMake = (d) => {
       d.drawPanel();
     });
   };
-  const orgNameGripBind = (host, th, table) => {
+  const orgNameGripBind = (host, th, table2) => {
     const grip = host.createDiv({ cls: "ws-org-namegrip" });
     grip.title = wsT("Drag to set how wide the Name column is — double-click to hand it back to the table");
     let from = 0, base = 0, live = 0;
-    const scroller = () => table.parentElement || host;
+    const scroller = () => table2.parentElement || host;
     const move = (ev) => {
       live = Math.max(ORG_NAME_MIN, Math.min(orgColCeil(scroller()), base + (ev.clientX - from)));
-      table.addClass("is-namefixed");
-      table.style.setProperty("--ws-org-namew", Math.round(live) + "px");
+      table2.addClass("is-namefixed");
+      table2.style.setProperty("--ws-org-namew", Math.round(live) + "px");
       try {
         if (orgNameLineNow)
           orgNameLineNow();
@@ -30706,8 +31088,8 @@ var reportMethods = {
     }
     const prose = kept.join("\n").replace(/%%[\s\S]*?%%/g, " ").replace(CJK_CHAR, " ");
     const fold = /^(tr|az)(-|$)/i.test(String(this.settings.language || "")) ? (s) => s.toLocaleLowerCase("tr") : (s) => s.toLowerCase();
-    for (const run of prose.match(WORDISH) || []) {
-      const w = fold(run).replace(/\u2019/g, "'").replace(/[-'_]+$/, "");
+    for (const run2 of prose.match(WORDISH) || []) {
+      const w = fold(run2).replace(/\u2019/g, "'").replace(/[-'_]+$/, "");
       if (!w || /^\p{N}/u.test(w))
         continue;
       map.set(w, (map.get(w) || 0) + 1);
@@ -31902,8 +32284,8 @@ var reportMethods = {
     const htable = headBox.createEl("table", { cls: "ws-report-words-table is-head" });
     cols(htable);
     const scroll = box.createDiv({ cls: "ws-report-words-scroll" });
-    const table = scroll.createEl("table", { cls: "ws-report-words-table" });
-    cols(table);
+    const table2 = scroll.createEl("table", { cls: "ws-report-words-table" });
+    cols(table2);
     const total = stats && stats.words ? stats.words : 0;
     const head = htable.createEl("thead").createEl("tr");
     const COLS = [
@@ -31935,7 +32317,7 @@ var reportMethods = {
         th.setAttribute("aria-sort", on ? sortDir === "asc" ? "ascending" : "descending" : "none");
       }
     };
-    const tbody = table.createEl("tbody");
+    const tbody = table2.createEl("tbody");
     let base = [];
     let top = 0;
     const rebase = () => {
@@ -31963,8 +32345,8 @@ var reportMethods = {
         pct.addClass("is-band-" + step);
       }
       if (!rows.length) {
-        const only = tbody.createEl("tr").createEl("td", { cls: "ws-report-word is-muted", text: q ? wsT('No word here has "{q}" in it.', { q }) : wsT("Only common words here.") });
-        only.setAttribute("colspan", "3");
+        const only2 = tbody.createEl("tr").createEl("td", { cls: "ws-report-word is-muted", text: q ? wsT('No word here has "{q}" in it.', { q }) : wsT("Only common words here.") });
+        only2.setAttribute("colspan", "3");
       }
     };
     chk.addEventListener("change", () => {
@@ -35463,22 +35845,22 @@ var barMethods = {
     if (this._barRebuilding)
       return;
     this._barRebuilding = true;
-    const run = () => {
+    const run2 = () => {
       this._barRebuilding = false;
       if (this.retroStatusBarEl)
         this.updateRetroStatusBar();
     };
     if (typeof window !== "undefined" && window.requestAnimationFrame) {
-      window.requestAnimationFrame(run);
+      window.requestAnimationFrame(run2);
     } else {
-      window.setTimeout(run, 0);
+      window.setTimeout(run2, 0);
     }
   },
   scheduleFit() {
     if (this._fitPending)
       return;
     this._fitPending = true;
-    const run = () => {
+    const run2 = () => {
       if (!this._fitPending)
         return;
       this._fitPending = false;
@@ -35488,7 +35870,7 @@ var barMethods = {
     if (el && el.clientWidth && typeof queueMicrotask === "function") {
       queueMicrotask(() => {
         try {
-          run();
+          run2();
         } catch {
           this._fitPending = false;
         }
@@ -35496,9 +35878,9 @@ var barMethods = {
       return;
     }
     if (typeof window !== "undefined" && window.requestAnimationFrame) {
-      window.requestAnimationFrame(run);
+      window.requestAnimationFrame(run2);
     } else {
-      window.setTimeout(run, 0);
+      window.setTimeout(run2, 0);
     }
   },
   fitStatusBarText() {
@@ -37116,12 +37498,12 @@ var storesMethods = {
     const inner = body.slice(a + SETTINGS_MARK_START.length, b);
     const vault = (inner.match(/^-\s*vault:\s*(.*)$/m) || [])[1] || "";
     const written = (inner.match(/^-\s*written:\s*(.*)$/m) || [])[1] || "";
-    const fence = inner.match(/```json\s*([\s\S]*?)```/);
-    if (!fence)
+    const fence2 = inner.match(/```json\s*([\s\S]*?)```/);
+    if (!fence2)
       return null;
     let settings = null;
     try {
-      settings = JSON.parse(fence[1]);
+      settings = JSON.parse(fence2[1]);
     } catch {
       return null;
     }
@@ -41999,7 +42381,7 @@ var exportMethods = {
       centerHeads: o.centerHeads !== false
     });
   },
-  async exportFigures(sections) {
+  async exportFigures(sections, mermaid = true) {
     const figs = { math: /* @__PURE__ */ new Map(), mermaid: /* @__PURE__ */ new Map() };
     const want = { display: /* @__PURE__ */ new Set(), inline: /* @__PURE__ */ new Set(), mermaid: /* @__PURE__ */ new Set() };
     for (const sec of sections) {
@@ -42010,8 +42392,9 @@ var exportMethods = {
         want.display.add(x);
       for (const x of f.inline)
         want.inline.add(x);
-      for (const x of f.mermaid)
-        want.mermaid.add(x);
+      if (mermaid)
+        for (const x of f.mermaid)
+          want.mermaid.add(x);
     }
     if (!want.display.size && !want.inline.size && !want.mermaid.size)
       return figs;
@@ -42045,9 +42428,9 @@ var exportMethods = {
       }
     }
     if (want.mermaid.size) {
-      let mermaid = null;
+      let mer = null;
       try {
-        mermaid = await (0, import_obsidian29.loadMermaid)();
+        mer = await (0, import_obsidian29.loadMermaid)();
       } catch (_) {
         wsCatch("exportFigures: loadMermaid", _);
       }
@@ -42058,8 +42441,8 @@ var exportMethods = {
         if (svg === void 0) {
           svg = "";
           try {
-            if (mermaid && typeof mermaid.render === "function") {
-              const r = await mermaid.render("ws-mermaid-" + Date.now().toString(36) + "-" + n++, src);
+            if (mer && typeof mer.render === "function") {
+              const r = await mer.render("ws-mermaid-" + Date.now().toString(36) + "-" + n++, src);
               svg = typeof r === "string" ? r : String(r && r.svg || "");
             }
           } catch {
@@ -42588,7 +42971,7 @@ var exportMethods = {
       }
       prevTimer = window.setTimeout(async () => {
         prevTimer = null;
-        const run = ++prevRun;
+        const run2 = ++prevRun;
         let picked = [];
         try {
           picked = ctx.compileList ? ctx.compileList() : [];
@@ -42670,14 +43053,16 @@ var exportMethods = {
         try {
           secs = await this.exportSections(picked, o, null, scope0);
           await this.exportImages(secs, "preview");
-          if (o.format !== "md" && o.format !== "docx") {
+          if (o.format === "docx")
+            figures = await this.exportFigures(secs, false);
+          else if (o.format !== "md") {
             figures = await this.exportFigures(secs);
             userCss = await this.exportUserCss(o);
           }
         } catch {
           return;
         }
-        if (run !== prevRun)
+        if (run2 !== prevRun)
           return;
         let words = 0;
         for (const sec of secs)
@@ -42928,7 +43313,8 @@ var exportMethods = {
       if (kind !== "docx") {
         opt.figures = await this.exportFigures(sections);
         opt.userCss = await this.exportUserCss(opt);
-      }
+      } else
+        opt.figures = await this.exportFigures(sections, false);
     }
     try {
       if (kind === "md") {
@@ -43675,16 +44061,16 @@ var historyMethods = {
       if (this.historyIsActive(days[k]))
         active++;
     }
-    let longest = 0, run = 0, prevKey = null;
+    let longest = 0, run2 = 0, prevKey = null;
     for (const k of keys) {
       if (!this.historyIsActive(days[k])) {
-        run = 0;
+        run2 = 0;
         prevKey = k;
         continue;
       }
-      run = prevKey && this.historyShiftKey(prevKey, 1) === k && run > 0 ? run + 1 : 1;
-      if (run > longest)
-        longest = run;
+      run2 = prevKey && this.historyShiftKey(prevKey, 1) === k && run2 > 0 ? run2 + 1 : 1;
+      if (run2 > longest)
+        longest = run2;
       prevKey = k;
     }
     let cursor = this.historyDateKey();
@@ -44035,13 +44421,13 @@ var historyMethods = {
     const out = [];
     for (const path of candidates) {
       const lower = path.toLowerCase();
-      let qi = 0, score = 0, run = 0, last = -2;
+      let qi = 0, score = 0, run2 = 0, last = -2;
       for (let i = 0; i < lower.length && qi < q.length; i++) {
         if (lower[i] !== q[qi])
           continue;
-        run = i === last + 1 ? run + 1 : 0;
+        run2 = i === last + 1 ? run2 + 1 : 0;
         const boundary = i === 0 || lower[i - 1] === "/" || lower[i - 1] === " " || lower[i - 1] === "-" || lower[i - 1] === "_";
-        score += 1 + run * 3 + (boundary ? 6 : 0);
+        score += 1 + run2 * 3 + (boundary ? 6 : 0);
         last = i;
         qi++;
       }

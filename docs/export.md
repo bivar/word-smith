@@ -43,8 +43,8 @@ Press **Expand** and the preview takes the whole pane, your pages one under the 
 
 Word, web page, e-book and Markdown work on phones too. For a PDF on a phone, export the web page and print it from the browser; the pane says so where the format would be.
 
-- **PDF** is printed by Obsidian's own engine from the same document the preview draws, so it matches what you saw.
-- **Word** is a real `.docx` with styles.
+- **PDF** is printed by Obsidian's own engine from the same document the preview draws, so it matches what you saw. Math and Mermaid diagrams come out drawn.
+- **Word** is a real `.docx` with styles. Its math is Word's own: every `$…$` and `$$…$$` becomes an equation Word draws and edits (fractions, sums and integrals with their limits, roots, accents, matrices, aligned equations, and a `\tag{1}` number beside its equation), a table cell's too. A formula MathJax can't read stays as you wrote it.
 - **Web page** is the same document with its page rules built in. Print it from any browser and you get the PDF again.
 - **E-book** is an EPUB for any e-reader: the contents, the notes and the pictures inside, and a file a chapter when each file starts a new page. The reader sets the pages, the font and the line spacing, so paper, margins, the font and the spacing don't apply.
 - **Markdown** is the plain compile. Also the way to glue a few notes into one file. Your pictures stay where they are, and the Markdown links to each one there, so pandoc can find and size them.
