@@ -1575,5 +1575,15 @@
 	"Your notes as a table to order, flag and count.": "As suas notas numa tabela para ordenar, marcar e contar.",
 	"Opens Word-Smith’s settings.": "Abre as definições do Word-Smith.",
 	"Your text as a page, outlined on a darker ground.": "O seu texto como uma página, contornada sobre um fundo mais escuro.",
-	"Shades each sentence by how hard it reads or how long it runs.": "Sombreia cada frase conforme a dificuldade de leitura ou a extensão."
+	"Shades each sentence by how hard it reads or how long it runs.": "Sombreia cada frase conforme a dificuldade de leitura ou a extensão.",
+	"Margins": "Margens",
+	"The white space around the text, in the Word file, the PDF and the preview. The paper’s own is an inch on Letter and A4, less on a small trim.": "O espaço em branco à volta do texto, no ficheiro do Word, no PDF e na pré-visualização. As do papel são de uma polegada no Carta e no A4, menos num formato pequeno.",
+	"The paper’s own": "As do papel",
+	"1 inch all round (APA, MLA, Chicago)": "1 polegada em todos os lados (APA, MLA, Chicago)",
+	"2.5 cm all round": "2,5 cm em todos os lados",
+	"3 cm top and left, 2 cm bottom and right (ABNT)": "3 cm em cima e à esquerda, 2 cm em baixo e à direita (ABNT)",
+	"Your own": "Personalizadas",
+	"Your margins": "As suas margens",
+	"Top, right, bottom and left, in cm, mm, in or pt: 3cm 2cm 2cm 3cm. One length sets every side, two the top and bottom then the sides. Margins that leave less than an inch of text use the paper’s own.": "Superior, direita, inferior e esquerda, em cm, mm, in ou pt: 3cm 2cm 2cm 3cm. Um valor serve para todos os lados; dois, para cima e baixo e depois para os lados. Margens que deixam menos de uma polegada de texto dão lugar às do papel.",
+	"Not lengths yet, so the paper’s own margins are used.": "Ainda não são medidas, por isso valem as margens do papel."
 }

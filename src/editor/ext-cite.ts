@@ -26,6 +26,8 @@ export function wsCiteExtension(plugin: WordSmith, cm: NonNullable<typeof CM>): 
 			if (!s.pluginEnabled || !s.citeMarks || !lib.size || !plugin.isEditorInScope(view)) return Decoration.none;
 			const style = s.citeStyle || 'apa';
 			const custom = { inText: s.citeCustomInText, around: s.citeCustomAround, entry: s.citeCustomEntry };
+			// the hover in the book's language, as the export writes the entry
+			let terms: ReturnType<typeof plugin.citeTerms> | null = null;
 			const b = new RangeSetBuilder<Decoration>();
 			let done = 0;
 			for (const { from, to } of view.visibleRanges) {
@@ -40,7 +42,7 @@ export function wsCiteExtension(plugin: WordSmith, cm: NonNullable<typeof CM>): 
 						const known = c.items.every((it) => lib.has(it.key));
 						if (c.narrative && !known) continue;
 						const title = known
-							? c.items.map((it) => { const r = lib.get(it.key); return r ? wsCiteEntryText(style, r, custom) : ''; }).join('\n')
+							? c.items.map((it) => { const r = lib.get(it.key); return r ? wsCiteEntryText(style, r, custom, terms || (terms = plugin.citeTerms())) : ''; }).join('\n')
 							: 'Not in your library: ' + c.items.filter((it) => !lib.has(it.key)).map((it) => '@' + it.key).join(', ');
 						b.add(line.from + c.from, line.from + c.to, Decoration.mark({ class: known ? 'ws-cite' : 'ws-cite ws-cite-missing', attributes: { title } }));
 					}

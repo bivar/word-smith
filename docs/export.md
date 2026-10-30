@@ -29,6 +29,8 @@ What you decide once lives in **Settings → Export**: your name, **Round the wo
 
 Nine paper sizes: Letter, A4, Legal, Executive, B5, A5, plus the trim sizes a novel is actually printed at: trade paperback, digest and mass market. Margins scale with the paper.
 
+**Margins** (Settings → Export → Pages) are the paper's own unless you pick others: an inch all round (APA, MLA, Chicago), 2.5 cm all round, ABNT's 3 cm at the top and on the left with 2 cm at the bottom and on the right, or your own, written as CSS writes them (`3cm 2cm 2cm 3cm` is top, right, bottom, left; one length sets every side). The Word file, the PDF and the preview all take them, and the running header and page number sit half a margin in. Margins that would leave less than an inch of text fall back to the paper's own.
+
 **Font** searches the fonts on your machine, each shown in its own face. Type one you don't have and it's still accepted, because a manuscript set for someone else's computer is a real thing to want.
 
 ## The preview
@@ -43,8 +45,8 @@ Press **Expand** and the preview takes the whole pane, your pages one under the 
 
 Word, web page, e-book and Markdown work on phones too. For a PDF on a phone, export the web page and print it from the browser; the pane says so where the format would be.
 
-- **PDF** is printed by Obsidian's own engine from the same document the preview draws, so it matches what you saw.
-- **Word** is a real `.docx` with styles.
+- **PDF** is printed by Obsidian's own engine from the same document the preview draws, so it matches what you saw. Math and Mermaid diagrams come out drawn.
+- **Word** is a real `.docx` with styles. Its math is Word's own: every `$…$` and `$$…$$` becomes an equation Word draws and edits (fractions, sums and integrals with their limits, roots, accents, matrices, aligned equations, and a `\tag{1}` number beside its equation), a table cell's too. A formula MathJax can't read stays as you wrote it.
 - **Web page** is the same document with its page rules built in. Print it from any browser and you get the PDF again.
 - **E-book** is an EPUB for any e-reader: the contents, the notes and the pictures inside, and a file a chapter when each file starts a new page. The reader sets the pages, the font and the line spacing, so paper, margins, the font and the spacing don't apply.
 - **Markdown** is the plain compile. Also the way to glue a few notes into one file. Your pictures stay where they are, and the Markdown links to each one there, so pandoc can find and size them.
@@ -57,9 +59,15 @@ Keys can use any alphabet (`@Søhr_1938`). A key with other punctuation in it, o
 
 A reprint or a translation keeps its original year (`origdate`, `original-date`): (1867; Paris: PUF, 1993) in a Chicago note, 1867/1993 in APA. Translators, editions, series and the day a web page was read come along too.
 
+Two works by the same authors in the same year are told apart with a letter, in the text and in the list: (Smith, 2020a), (Smith, 2020b), lettered in their titles' order. In APA, several sources in one citation come in the list's order, (Brown, 2018; Zeta, 2019), unless a prefix like "see" makes the order yours. The list sorts in your book's alphabet, so Ávila files with the A's.
+
+A locator says what it points at in your words or the style's: `p. 12` or a bare `12` is a page, `12-15` pages (pp. 12–15 in APA), `chapter 3` or `cap. 3` a chapter (chap. 3, or cap. 3 in a Portuguese book), and `sec.`, `vol.`, `fig.`, `line`, `para.`, `n.` and `fol.` likewise. A word it doesn't know (`art. 5`) prints as you wrote it.
+
+A thesis is listed as one: *Title* [Doctoral dissertation, University] in APA, PhD diss. in Chicago, Tese (Doutorado) in a Portuguese book. Its kind comes from the library when it names one (BibLaTeX's `type`, CSL's `genre`), else from `@phdthesis` or `@mastersthesis`. A CSL-JSON file from Zotero's own export is read by each item's citation key, not its Zotero address.
+
 Harvard follows Cite Them Right: (Woolf, 1929, p. 108) in the text, Woolf, V. (1929) in the list. In Chicago notes, turn on **Ibid.** and a note citing the same source as the one before it says Ibid. (Ebd. in German, Там же in Russian). An export tells you which cited sources have no year or title.
 
-The words around the fields follow your book's language (Settings → Word-Smith → **Language**): French gets "trad.", "2e éd.", "s.d." and « », German "übers. v." and „ “. A language pack can change any of them with a `cite-` line (`- cite-and: &`, `- cite-ibid: Id.`). IEEE stays in English.
+The words around the fields follow your book's language (Settings → Word-Smith → **Language**): French gets "trad.", "2e éd.", "s.d." and « », German "übers. v." and „ “. A language pack can change any of them with a `cite-` line (`- cite-and: &`, `- cite-ibid: Id.`, `- cite-thesis-phd: Tese de doutorado`, `- cite-loc-chapter: cap.`). IEEE stays in English.
 
 ## Where it stops
 

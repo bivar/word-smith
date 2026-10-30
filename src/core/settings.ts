@@ -61,6 +61,9 @@ export interface WsExportOpts {
 	keepBlankLines?: boolean;
 	/** the first line's indent, a size with its unit, '0.5in' or '1.25cm' (`WS_INDENT_SIZES`; half an inch by default) */
 	indentSize?: string;
+	/** THE MARGINS (B11): '' the paper's own, a preset of `WS_MARGIN_PRESETS` ('1in', '2.5cm', 'abnt'), or 'custom' and
+	 * `marginsCustom`, up to four lengths as CSS writes them, top right bottom left ('3cm 2cm 2cm 3cm'); `wsMarginsOf` */
+	margins?: string; marginsCustom?: string;
 	// words
 	author?: string; titleText?: string; subtitleText?: string; outFolder?: string; font?: string; divider?: string;
 	format?: string; footnotePlace?: string; joinMode?: string; lineSpacing?: string; paperId?: string;
